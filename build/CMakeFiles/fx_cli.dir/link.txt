@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -g -shared  -o fx_cli.cpython-310-x86_64-linux-gnu.so CMakeFiles/fx_cli.dir/pybind_module.cpp.o  libfx_cli_cpp.a 
