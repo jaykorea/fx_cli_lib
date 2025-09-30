@@ -1,7 +1,7 @@
 # API — 공개 함수 명세 및 사용
 
 C++과 Python은 **동일한 개념의 명령**을 제공합니다.
-- C++: 원문 **응답 문자열**(req/status/ping/whoami)
+- C++: 원문 **응답 문자열** std::string
 - Python: 주요 응답을 **dict로 파싱**
 
 ---
