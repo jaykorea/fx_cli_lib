@@ -65,7 +65,7 @@ motor_setzero(ids: list[int]) -> bool
 - `ids`: 모터 ID 목록(0–255)
 - 브로드캐스트: 빈 리스트 `[]`(권장) 또는 `[0xFF]`(펌웨어 지원 시)
 
-### MIT 제어(ACK 없음)
+### MIT 제어
 ```python
 operation_control(groups: list[dict]) -> None
 # 예시: [{"id":1,"pos":0.0,"vel":0.0,"kp":0.0,"kd":0.1,"tau":0.0}, ...]
