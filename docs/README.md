@@ -1,6 +1,6 @@
 # fx_cli — fx client library
 
-- `fx_cli`는 FX 계열 모터 제어기와 UDP 기반 통신 **C++/Python 클라이언트** 라이브러리 입니다. 내부적으로 **수신 전용 스레드 + 링버퍼**로 응답 지연 편차를 줄입니다. 간단히 쓰고, 빠르게 동작하도록 설계되었습니다.
+- `fx_cli`는 Fx Controller UDP 기반 통신 **C++/Python 클라이언트** 라이브러리 입니다. 내부적으로 **수신 전용 스레드 + 링버퍼**로 응답 지연 편차를 줄입니다. 간단히 쓰고, 빠르게 동작하도록 설계되었습니다.
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/26871cb1-bbee-48e7-aff1-75a4214796ae" />
 
 ## 빠른 시작
