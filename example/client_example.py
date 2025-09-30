@@ -34,12 +34,12 @@ try:
     steps = int(T / dt)
 
     # MCU PING Test
-    # result = cli.mcu_ping()
-    # print(result)
+    result = cli.mcu_ping()
+    print(result)
 
     # MCU Identify Test
-    # result = cli.mcu_whoami()
-    # print(result)
+    result = cli.mcu_whoami()
+    print(result)
 
     # start = time.time()
     # for i in range(steps):
@@ -48,12 +48,12 @@ try:
     # end = time.time()
 
     # Get Obs
-    start = time.time()
-    for i in range(steps):
-        state = cli.req(ids_specific)
-        print(state)
-        time.sleep(dt)
-    end = time.time()
+    # start = time.time()
+    # for i in range(steps):
+    #     state = cli.req(ids_specific)
+    #     print(state)
+    #     time.sleep(dt)
+    # end = time.time()
 
     # Get Status
     # start = time.time()

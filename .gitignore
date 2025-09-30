@@ -1,0 +1,21 @@
+# 컴파일된 빌드 파일 및 폴더를 무시합니다.
+/build/
+
+# 레거시 관련 폴더를 무시합니다.
+/legacy/
+
+# VS Code 편집기 관련 설정 파일을 무시합니다.
+.vscode/
+
+# 운영체제별 파일을 무시합니다.
+.DS_Store
+Thumbs.db
+
+# 로그 파일을 무시합니다.
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 의존성 모듈 폴더를 무시합니다.
+node_modules/

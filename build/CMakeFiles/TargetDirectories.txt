@@ -1,8 +1,0 @@
-/home/jay/fx_cli_lib/build/CMakeFiles/fx_cli_cpp.dir
-/home/jay/fx_cli_lib/build/CMakeFiles/fx_cli.dir
-/home/jay/fx_cli_lib/build/CMakeFiles/edit_cache.dir
-/home/jay/fx_cli_lib/build/CMakeFiles/rebuild_cache.dir
-/home/jay/fx_cli_lib/build/CMakeFiles/list_install_components.dir
-/home/jay/fx_cli_lib/build/CMakeFiles/install.dir
-/home/jay/fx_cli_lib/build/CMakeFiles/install/local.dir
-/home/jay/fx_cli_lib/build/CMakeFiles/install/strip.dir

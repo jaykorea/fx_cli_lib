@@ -1,2 +1,0 @@
-/usr/bin/ar qc libfx_cli_cpp.a CMakeFiles/fx_cli_cpp.dir/fx_client.cpp.o CMakeFiles/fx_cli_cpp.dir/utils/elapsed_timer.cpp.o
-/usr/bin/ranlib libfx_cli_cpp.a

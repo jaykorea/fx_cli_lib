@@ -1,5 +1,0 @@
-/usr/local/lib/libfx_cli_cpp.a
-/usr/local/lib/python3.10/dist-packages/fx_cli/fx_cli.cpython-310-x86_64-linux-gnu.so
-/usr/local/lib/python3.10/dist-packages/fx_cli/__init__.py
-/usr/local/include/fx_cli/fx_client.h
-/usr/local/include/fx_cli/elapsed_timer.h
