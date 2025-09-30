@@ -4,12 +4,11 @@
 #include <vector>
 #include <cstdint>
 
-// 리눅스 전용 UDP AT-Command 클라이언트
+// 리눅스 전용 UDP 클라이언트
 // - 내부적으로 RX 전용 스레드와 링버퍼를 운영하여
-//   측정 지연 편차를 최소화하고 안정적인 패킷 수신을 지원합니다.
+//   측정 지연 편차를 최소화하고 안정적인 패킷 수신을 지원.
 class FxCli {
 public:
-  // ip와 port로 대상 MCU를 설정합니다.
   FxCli(const std::string& ip, uint16_t port);
   FxCli(const FxCli&) = delete;
   FxCli& operator=(const FxCli&) = delete;
@@ -18,12 +17,16 @@ public:
   // ──────────────────────────
   // 공개 명령 API
   // ──────────────────────────
-  // 모터 구동/정지/비상정지 : MCU로 명령 전송 후 원하는 TAG가 올 때까지 큐에서 대기
+  // 모터 구동/정지/비상정지/ : MCU로 명령 전송 후 원하는 TAG가 올 때까지 큐에서 대기
+  std::string mcu_ping();
+  std::string mcu_whoami();
+
   bool motor_start(const std::vector<uint8_t>& ids);
   bool motor_stop (const std::vector<uint8_t>& ids);
   bool motor_estop(const std::vector<uint8_t>& ids);
+  bool motor_setzero(const std::vector<uint8_t> &ids);
 
-  // MIT 제어 : 동일하게 TAG 대기 방식으로 안정 처리
+  // MIT 제어 
   void operation_control(const std::vector<uint8_t>& ids,
                          const std::vector<float>& pos,
                          const std::vector<float>& vel,
@@ -53,8 +56,9 @@ private:
                          const char* expect_tag,
                          int timeout_ms);
 
-  // 기본 대기시간(ms) – 필요 시 조정
-  int timeout_ms_ = 2;
+  // 기본 대기시간(ms)
+  int timeout_ms_ = 200;
+  int timeout_ms_rt_ = 2;
 
   // ──────────────────────────
   // 내부 UDP 소켓 + 수신 스레드/큐 관리

@@ -311,7 +311,24 @@ bool FxCli::send_cmd_wait_ok_tag(const std::string& cmd,
 }
 
 // ---- 공개 API ----
-// 제어 계열은 혼잡한 스트림에서 원하는 TAG를 기다리도록 변경
+std::string FxCli::mcu_ping() {
+    std::string cmd = "AT+PING";
+    std::string out;
+    send_cmd(cmd);
+    bool ok = socket_->wait_for_ok_tag("PING", out, timeout_ms_);   // ★ 태그 검증 - ON
+    
+    return ok ? out : std::string();
+}
+
+std::string FxCli::mcu_whoami() {
+    std::string cmd = "AT+WHOAMI";
+    std::string out;
+    send_cmd(cmd);
+    bool ok = socket_->wait_for_ok_tag("WHOAMI", out, timeout_ms_);   // ★ 태그 검증 - ON
+    
+    return ok ? out : std::string();
+}
+
 bool FxCli::motor_start(const std::vector<uint8_t> &ids) {
     std::string cmd = "AT+START " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "START", timeout_ms_);
@@ -325,6 +342,11 @@ bool FxCli::motor_stop(const std::vector<uint8_t> &ids) {
 bool FxCli::motor_estop(const std::vector<uint8_t> &ids) {
     std::string cmd = "AT+ESTOP " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "ESTOP", timeout_ms_);
+}
+
+bool FxCli::motor_setzero(const std::vector<uint8_t> &ids) {
+    std::string cmd = "AT+SETZERO " + build_id_group(ids);
+    return send_cmd_wait_ok_tag(cmd, "SETZERO", timeout_ms_);
 }
 
 void FxCli::operation_control(const std::vector<uint8_t> &ids,
@@ -360,7 +382,7 @@ std::string FxCli::req(const std::vector<uint8_t> &ids)
     send_cmd(cmd);
 
     std::string out;
-    bool ok = socket_->wait_for_ok_tag("REQ", out, timeout_ms_);   // ★ 태그 검증 - ON
+    bool ok = socket_->wait_for_ok_tag("REQ", out, timeout_ms_rt_);   // ★ 태그 검증 - ON
     // bool ok = socket_->wait_for_any(out, timeout_ms_);   // ★ 태그 검증 - OFF
     
 #ifdef DEBUG
@@ -380,7 +402,7 @@ std::string FxCli::status()
     send_cmd(cmd);
 
     std::string out;
-    bool ok = socket_->wait_for_ok_tag("STATUS", out, timeout_ms_);   // ★ 태그 검증 - ON
+    bool ok = socket_->wait_for_ok_tag("STATUS", out, timeout_ms_rt_);   // ★ 태그 검증 - ON
     // bool ok = socket_->wait_for_any(out, timeout_ms_);   // ★ 태그 검증 없음
 #ifdef DEBUG
     g_timer_ack.stopTimer();

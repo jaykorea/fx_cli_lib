@@ -261,7 +261,14 @@ PYBIND11_MODULE(fx_cli, m) {
         .def(py::init<const std::string&, uint16_t>(),
              py::arg("ip"),
              py::arg("port"))
-
+        .def("mcu_ping", [](FxCli &self) {
+            std::string resp = self.mcu_ping();
+            return parse_response_string(resp); // dict
+        })
+        .def("mcu_whoami", [](FxCli &self) {
+            std::string resp = self.mcu_whoami();
+            return parse_response_string(resp); // dict
+        })
         .def("motor_start", [](FxCli &self, const py::object &ids_obj) {
             auto ids = parse_id_list(ids_obj);
             return self.motor_start(ids); // bool
@@ -275,6 +282,11 @@ PYBIND11_MODULE(fx_cli, m) {
         .def("motor_estop", [](FxCli &self, const py::object &ids_obj) {
             auto ids = parse_id_list(ids_obj);
             return self.motor_estop(ids); // bool
+        }, py::arg("ids"))
+
+        .def("motor_setzero", [](FxCli &self, const py::object &ids_obj) {
+            auto ids = parse_id_list(ids_obj);
+            return self.motor_setzero(ids); // bool
         }, py::arg("ids"))
 
         .def("operation_control", [](FxCli &self, const py::list &groups) {

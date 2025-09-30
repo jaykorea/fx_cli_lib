@@ -33,13 +33,21 @@ try:
     dt = 0.02
     steps = int(T / dt)
 
+    # MCU PING Test
+    # result = cli.mcu_ping()
+    # print(result)
+
+    # MCU Identify Test
+    # result = cli.mcu_whoami()
+    # print(result)
+
     # start = time.time()
     # for i in range(steps):
     #     cli.operation_control(mit_groups)
     #     time.sleep(dt)
     # end = time.time()
 
-    # OBS
+    # Get Obs
     start = time.time()
     for i in range(steps):
         state = cli.req(ids_specific)
@@ -47,7 +55,7 @@ try:
         time.sleep(dt)
     end = time.time()
 
-    # 진단 상태
+    # Get Status
     # start = time.time()
     # for i in range(steps):
     #     status = cli.status()
@@ -55,7 +63,7 @@ try:
     #     time.sleep(dt)
     # end = time.time()
 
-    # # STOP
+    # # Motor Stop
     # if not cli.motor_stop(ids_specific):
     #     print("Motor stop failed")
     # else:
@@ -65,17 +73,15 @@ except Exception as e:
     print("Error during specific-ID flow:", e)
 
 # 2) 브로드캐스트 제어 예시
-#   - 빈 리스트 [] 를 사용하면 ID 그룹이 "<>"로 전송됩니다.
-#   - 펌웨어가 "<>"를 브로드캐스트로 해석한다는 전제.
-# ids_broadcast = []
+# ids_broadcast = [0xff]
 
 # try:
 #     cli.motor_stop(ids_broadcast)
 #     print("motor_stop(broadcast) OK")
-#
+
 #     # 필요 시 E-STOP 브로드캐스트
 #     # cli.motor_estop(ids_broadcast)
 #     # print("motor_estop(broadcast) OK")
-#
+
 # except Exception as e:
 #     print("Error during broadcast flow:", e)
