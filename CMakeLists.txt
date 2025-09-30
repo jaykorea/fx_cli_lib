@@ -47,11 +47,27 @@ install(TARGETS fx_cli_cpp
 )
 
 # site-packages 경로 계산
-execute_process(
-  COMMAND ${Python3_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_paths()['platlib'])"
-  OUTPUT_VARIABLE PY_SITE_PACKAGES
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+# Conda 환경 변수가 있는지 확인
+if(DEFINED ENV{CONDA_PREFIX})
+  # CONDA_PREFIX를 Python 검색 경로의 최우선 순위로 지정
+  set(Python3_ROOT_DIR $ENV{CONDA_PREFIX})
+  message(STATUS "Conda environment detected. Using Python from: ${Python3_ROOT_DIR}")
+endif()
+
+# 기존의 Python 검색 및 사용 코드
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+if(Python3_FOUND)
+  message(STATUS "Found Python interpreter: ${Python3_EXECUTABLE}")
+  
+  execute_process(
+    COMMAND ${Python3_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_paths()['platlib'])"
+    OUTPUT_VARIABLE PY_SITE_PACKAGES
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  
+  message(STATUS "Python site-packages found at: ${PY_SITE_PACKAGES}")
+endif()
 
 # 파이썬 확장 모듈을 fx_cli 패키지 디렉터리에 설치
 install(TARGETS fx_cli
