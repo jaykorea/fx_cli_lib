@@ -9,8 +9,11 @@
 ```bash
 sudo apt-get update
 sudo apt-get install -y build-essential cmake python3-dev pybind11-dev
-# 또는 pip 사용
-# pip3 install pybind11
+```
+## 간편설치 (스크립트)
+```bash
+chmod +x install.sh
+./install.sh   # 빌드 후 설치까지
 ```
 
 ## 빌드
@@ -27,9 +30,3 @@ sudo cmake --install .
 - C++ 헤더: `/usr/local/include/fx_cli/`
 - 라이브러리: `/usr/local/lib/`
 - Python 모듈: `site-packages/fx_cli/`
-
-## 스크립트로 한 번에
-```bash
-chmod +x install.sh
-./install.sh   # 빌드 후 설치까지
-```
