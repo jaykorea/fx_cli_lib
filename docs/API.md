@@ -21,11 +21,10 @@ bool motor_estop(const std::vector<uint8_t>& ids);
 bool motor_setzero(const std::vector<uint8_t>& ids);
 ```
 - `ids`: 제어 대상 모터 ID 목록
-  - 브로드캐스트: 빈 벡터 `[]` → `<>` 전송(펌웨어가 지원 시)
-  - 또는 `0xFF` 사용(펌웨어 정책에 따름)
+  - 브로드캐스트: `0xFF` 사용
 - 반환: 기대 `<TAG>` ACK 수신 시 `true`
 
-### MIT 제어(ACK 없음, 실시간)
+### MIT 제어
 ```cpp
 void operation_control(const std::vector<uint8_t>& ids,
                        const std::vector<float>& pos,
