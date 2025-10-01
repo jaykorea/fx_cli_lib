@@ -123,9 +123,9 @@ req(ids: list[int]) -> dict
 ##### 'Mx' 내부 구조 (M1, M2, ...)
 | 키   | 타입   | 단위  | 설명      |
 |------|--------|-------|-----------|
-| `pos` | `float` | rad   | 모터 위치 |
-| `vel` | `float` | rad/s | 모터 속도 |
-| `tau` | `float` | Nm    | 모터 토크 |
+| `p` | `float` | rad   | 모터 위치 |
+| `v` | `float` | rad/s | 모터 속도 |
+| `t` | `float` | Nm    | 모터 토크 |
 
 ###### `IMU` 내부 구조
 | 키  | 타입   | 단위 | 설명 |
@@ -136,6 +136,9 @@ req(ids: list[int]) -> dict
 | `gx` | `float` | rad/s | 자이로 X축 |
 | `gy` | `float` | rad/s | 자이로 Y축 |
 | `gz` | `float` | rad/s | 자이로 Z축 |
+| `pgx` | `float` | g | 투영 중력 x축 |
+| `pgy` | `float` | g | 투영 중력 y축 |
+| `pgz` | `float` | g | 투영 중력 Z축 |
 
 ##### `SEQ_NUM` 내부 구조
 | 키   | 타입   | 설명                    |
@@ -173,11 +176,11 @@ status() -> dict
     "EP": 0, "BO": 0, "REC": 0, "TEC": 7,
     "TXFE": 8, "RX0": 0, "RX1": 0
   },
-  "M1": {"pos": 6.23, "vel": 1.14, "tau": 0.28, "pattern": 2, "err": "None"},
-  "M2": {"pos": -2.15, "vel": -0.00, "tau": 0.03, "pattern": 2, "err": "None"},
-  "M3": {"pos": -1.84, "vel": -0.03, "tau": -0.01, "pattern": 2, "err": "None"},
-  "M4": {"pos": 1.95, "vel": -0.05, "tau": -0.03, "pattern": 2, "err": "None"},
-  "IMU": {"r": -0.37, "p": 0.33, "y": -15.18, "gx": 0.00, "gy": 0.00, "gz": 0.00}
+  "M1": {"p": 6.23, "v": 1.14, "t": 0.28, "pattern": 2, "err": "None"},
+  "M2": {"p": -2.15, "v": -0.00, "t": 0.03, "pattern": 2, "err": "None"},
+  "M3": {"p": -1.84, "v": -0.03, "t": -0.01, "pattern": 2, "err": "None"},
+  "M4": {"p": 1.95, "v": -0.05, "t": -0.03, "pattern": 2, "err": "None"},
+  "IMU": {"r": -0.37, "p": 0.33, "y": -15.18, "gx": 0.00, "gy": 0.00, "gz": 0.00, "pgx": 0.00, "pgy": 0.00, "pgz": 1.0}
 }
 ```
 
@@ -211,9 +214,9 @@ status() -> dict
 ##### 'Mx' 내부 구조 (M1, M2, ...)
 | 키   | 타입   | 단위  | 설명      |
 |------|--------|-------|-----------|
-| `pos` | `float` | rad   | 모터 위치 |
-| `vel` | `float` | rad/s | 모터 속도 |
-| `tau` | `float` | Nm    | 모터 토크 |
+| `p` | `float` | rad   | 모터 위치 |
+| `v` | `float` | rad/s | 모터 속도 |
+| `t` | `float` | Nm    | 모터 토크 |
 | `pattern` | `int` | code | 0=정지/대기, 1=보정, 2=작동 |
 | `err` | `str` | - | 모터 오류 상태 |
 
@@ -227,7 +230,9 @@ status() -> dict
 | `gx` | `float` | rad/s | 자이로 X축 |
 | `gy` | `float` | rad/s | 자이로 Y축 |
 | `gz` | `float` | rad/s | 자이로 Z축 |
-
+| `pgx` | `float` | g | 투영 중력 x축 |
+| `pgy` | `float` | g | 투영 중력 y축 |
+| `pgz` | `float` | g | 투영 중력 Z축 |
 
 ---
 
