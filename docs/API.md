@@ -35,6 +35,8 @@ void operation_control(const std::vector<uint8_t>& ids,
 ```
 - 각 배열의 길이는 `ids.size()`와 같아야 함
 
+---
+
 ### 데이터 요청/상태
 ```python
 req(ids: list[int]) -> dict
