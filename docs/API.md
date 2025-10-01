@@ -19,7 +19,7 @@ bool motor_estop(const std::vector<uint8_t>& ids);
 bool motor_setzero(const std::vector<uint8_t>& ids);
 ```
 - `ids`: 제어 대상 모터 ID 목록
-  - 브로드캐스트: `0xFF` 사용
+- 브로드캐스트: `0xFF` 사용
 - 반환: 기대 `<TAG>` ACK 수신 시 `true`
 
 ---
@@ -79,7 +79,7 @@ motor_setzero(ids: list[int]) -> bool
 ```python
 operation_control(groups: list[dict]) -> None
 ```
-- # 예시: [{"id":1,"pos":0.0,"vel":0.0,"kp":0.0,"kd":0.1,"tau":0.0}, ...]
+- 예시: [{"id":1,"pos":0.0,"vel":0.0,"kp":0.0,"kd":0.1,"tau":0.0}, ...]
 
 ---
 
