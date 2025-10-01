@@ -63,7 +63,7 @@ void flush();  // 수신 큐 즉시 비우기
 FxCli(ip: str, port: int)
 ```
 
-### 제어 명령
+### 명령 집합
 ```python
 motor_start(ids: list[int]) -> bool
 motor_stop(ids: list[int])  -> bool
@@ -71,7 +71,7 @@ motor_estop(ids: list[int]) -> bool
 motor_setzero(ids: list[int]) -> bool
 ```
 - `ids`: 모터 ID 목록(0–255)
-- 브로드캐스트: 빈 리스트 `[]`(권장) 또는 `[0xFF]`(펌웨어 지원 시)
+- 브로드캐스트: `[0xFF]`(펌웨어 지원 시)
 
 ---
 
@@ -105,9 +105,6 @@ status() -> dict
   "SEQ_NUM": {"cnt": 183510}
 }
 ```
-
----
-
 #### 필드 정의
 
 | 키          | 타입     | 설명 |
@@ -127,6 +124,8 @@ status() -> dict
 | 키   | 타입   | 설명                    |
 |------|--------|-------------------------|
 | `cnt` | `int` | MCU 내부 시퀀스 카운터 (패킷 순서 추적, 유실 여부 확인용) |
+
+---
 
 ### 기타
 ```python
