@@ -34,6 +34,52 @@ void operation_control(const std::vector<uint8_t>& ids,
                        const std::vector<float>& tau);
 ```
 - 각 배열의 길이는 `ids.size()`와 같아야 함
+  
+---
+
+### 데이터 요청/상태
+```cpp
+std::string req(const std::vector<uint8_t>& ids); // 최신 <REQ> 패킷
+std::string status();                              // <STATUS> 패킷
+```
+- 반환: MCU 응답 **원문 문자열**
+- 내부 기본 대기시간: 일반 명령 200 ms, 실시간 2 ms
+
+---
+
+### 기타
+```cpp
+std::string mcu_ping();
+std::string mcu_whoami();
+void flush();  // 수신 큐 즉시 비우기
+```
+
+---
+
+## Python API (`fx_cli.FxCli`)
+
+### 생성자
+```python
+FxCli(ip: str, port: int)
+```
+
+### 제어 명령
+```python
+motor_start(ids: list[int]) -> bool
+motor_stop(ids: list[int])  -> bool
+motor_estop(ids: list[int]) -> bool
+motor_setzero(ids: list[int]) -> bool
+```
+- `ids`: 모터 ID 목록(0–255)
+- 브로드캐스트: 빈 리스트 `[]`(권장) 또는 `[0xFF]`(펌웨어 지원 시)
+
+---
+
+### MIT 제어
+```python
+operation_control(groups: list[dict]) -> None
+# 예시: [{"id":1,"pos":0.0,"vel":0.0,"kp":0.0,"kd":0.1,"tau":0.0}, ...]
+```
 
 ---
 
