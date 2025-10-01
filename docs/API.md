@@ -9,7 +9,7 @@
 FxCli(const std::string& ip, uint16_t port);
 ```
 
-### 제어 명령
+### 명령 집합
 ```cpp
 bool motor_start(const std::vector<uint8_t>& ids);
 bool motor_stop (const std::vector<uint8_t>& ids);
