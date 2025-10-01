@@ -90,7 +90,7 @@ req(ids: list[int]) -> dict
 - 반환: MCU 응답을 **dict** 형태로 반환  
 - 수신 대기 큐에 패킷이 없을 경우 **빈 dict (`{}`)** 반환  
 
-#### 데이터 프로토콜 (예시)
+#### 데이터 프로토콜 (예시: req 호출 시)
 
 ```json
 {
@@ -118,6 +118,17 @@ req(ids: list[int]) -> dict
 | `pos` | `float` | rad   | 모터 위치 |
 | `vel` | `float` | rad/s | 모터 속도 |
 | `tau` | `float` | Nm    | 모터 토크 |
+| `IMU` | `dict`  | 관성센서 (IMU) 데이터 |
+
+###### `IMU` 내부 구조
+| 키  | 타입   | 단위 | 설명 |
+|-----|--------|------|------|
+| `r` | `float` | deg | Roll |
+| `p` | `float` | deg | Pitch |
+| `y` | `float` | deg | Yaw |
+| `gx` | `float` | rad/s | 자이로 X축 |
+| `gy` | `float` | rad/s | 자이로 Y축 |
+| `gz` | `float` | rad/s | 자이로 Z축 |
 
 #### `SEQ_NUM` 내부 구조
 | 키   | 타입   | 설명                    |
@@ -133,70 +144,71 @@ status() -> dict
 - 반환: MCU 응답을 **dict** 형태로 반환  
 - 수신 대기 큐에 패킷이 없을 경우 **빈 dict (`{}`)** 반환
 
-
-#### 데이터 프로토콜 (예시: status)
-
+### 데이터 프로토콜 (예시: status)
 ```json
 {
   "OK <STATUS>": true,
-  "MCU": {"fw": "1.1.0", "proto": "ATv1", "uptime": 666},
-  "NET": {"status": "up", "ip": "192.168.10.10", "gw": "192.168.10.1", "mask": "255.255.255.0"},
+  "MCU": {"fw": "1.1.0", "proto": "ATv1", "uptime": 81845},
+  "NET": {
+    "status": "up",
+    "ip": "192.168.10.10",
+    "gw": "192.168.10.1",
+    "mask": "255.255.255.0"
+  },
   "QUEUE": {"udp_tx": 0, "motor_ctrl": 0},
-  "CAN1": {"Err": "0x00000100", "TEC": 103, "REC": 0, "RX0": 0, "TXFE": 8},
-  "M1": {"pos": 11.81, "vel": -0.02, "tau": -0.00, "pattern": 0, "err": null},
-  "M2": {"pos": -2.17, "vel": -0.01, "tau": 0.00, "pattern": 0, "err": null}
+  "CAN1": {
+    "Err": "0x00000100", "LEC": 3, "ACT": 24,
+    "EP": 0, "BO": 0, "REC": 0, "TEC": 62,
+    "TXFE": 7, "RX0": 0, "RX1": 0
+  },
+  "CAN2": {
+    "Err": "0x00000300", "LEC": 0, "ACT": 16,
+    "EP": 0, "BO": 0, "REC": 0, "TEC": 7,
+    "TXFE": 8, "RX0": 0, "RX1": 0
+  },
+  "M1": {"pos": 6.23, "vel": 1.14, "tau": 0.28, "pattern": 2, "err": "None"},
+  "M2": {"pos": -2.15, "vel": -0.00, "tau": 0.03, "pattern": 2, "err": "None"},
+  "M3": {"pos": -1.84, "vel": -0.03, "tau": -0.01, "pattern": 2, "err": "None"},
+  "M4": {"pos": 1.95, "vel": -0.05, "tau": -0.03, "pattern": 2, "err": "None"},
+  "IMU": {"r": -0.37, "p": 0.33, "y": -15.18, "gx": 0.00, "gy": 0.00, "gz": 0.00}
 }
 ```
 
 #### 필드 정의 (status)
-
-| 키           | 타입    | 설명 |
-|--------------|---------|------|
+| 키             | 타입   | 설명 |
+|----------------|--------|------|
 | `OK <STATUS>` | `bool` | `<STATUS>` 명령 응답 여부 |
-| `MCU`        | `dict` | 펌웨어 및 프로토콜 정보, 업타임 |
-| `NET`        | `dict` | 네트워크 상태 (IP, GW, MASK 등) |
-| `QUEUE`      | `dict` | MCU 내부 큐 상태 (udp_tx, motor_ctrl 등) |
-| `CANx`       | `dict` | CAN 버스 상태 (에러 코드, 카운터 등) |
-| `Mx`         | `dict` | 모터별 상태 정보 (위치, 속도, 토크, 패턴, 에러) |
+| `MCU`         | `dict` | 펌웨어 및 프로토콜 정보, 업타임 |
+| `NET`         | `dict` | 네트워크 상태 (IP, GW, MASK 등) |
+| `QUEUE`       | `dict` | MCU 내부 큐 상태 |
+| `CANx`        | `dict` | CAN 버스 상태 |
+| `Mx`          | `dict` | 모터별 상태 정보 |
+| `IMU`         | `dict` | 관성센서 (IMU) 데이터 |
 
-#### `MCU` 내부 구조
-| 키   | 타입   | 설명 |
-|------|--------|------|
-| `fw` | `str`  | 펌웨어 버전 |
-| `proto` | `str` | 프로토콜 버전 |
-| `uptime` | `int` | 시스템 동작 시간(ms 단위) |
+##### `CANx` 내부 구조
+| 키     | 타입   | 설명 |
+|--------|--------|------|
+| `Err`  | `str`  | 에러 코드 (hex) |
+| `LEC`  | `int`  | Last Error Code |
+| `ACT`  | `int`  | Active Error 상태 |
+| `EP`   | `int`  | Error Passive 상태 |
+| `BO`   | `int`  | Bus Off 상태 |
+| `REC`  | `int`  | Receive Error Counter |
+| `TEC`  | `int`  | Transmit Error Counter |
+| `TXFE` | `int`  | TX FIFO Empty 상태 |
+| `RX0`  | `int`  | RX FIFO0 메시지 수 |
+| `RX1`  | `int`  | RX FIFO1 메시지 수 |
 
-#### `NET` 내부 구조
-| 키   | 타입   | 설명 |
-|------|--------|------|
-| `status` | `str` | 네트워크 상태 ("up"/"down") |
-| `ip`     | `str` | IP 주소 |
-| `gw`     | `str` | 게이트웨이 주소 |
-| `mask`   | `str` | 서브넷 마스크 |
+##### `IMU` 내부 구조
+| 키  | 타입   | 단위 | 설명 |
+|-----|--------|------|------|
+| `r` | `float` | deg | Roll |
+| `p` | `float` | deg | Pitch |
+| `y` | `float` | deg | Yaw |
+| `gx` | `float` | rad/s | 자이로 X축 |
+| `gy` | `float` | rad/s | 자이로 Y축 |
+| `gz` | `float` | rad/s | 자이로 Z축 |
 
-#### `QUEUE` 내부 구조
-| 키         | 타입   | 설명 |
-|------------|--------|------|
-| `udp_tx`   | `int`  | UDP 전송 큐 길이 |
-| `motor_ctrl` | `int` | 모터 제어 큐 길이 |
-
-#### `CANx` 내부 구조
-| 키    | 타입   | 설명 |
-|-------|--------|------|
-| `Err` | `str`  | 에러 코드 (hex) |
-| `TEC` | `int`  | Transmit Error Counter |
-| `REC` | `int`  | Receive Error Counter |
-| `RX0` | `int`  | RX FIFO0 메시지 수 |
-| `TXFE`| `int`  | TX FIFO Empty 상태 |
-
-#### `Mx` 내부 구조 (모터별 상태)
-| 키       | 타입   | 설명 |
-|----------|--------|------|
-| `pos`    | `float` | 위치 [rad] |
-| `vel`    | `float` | 속도 [rad/s] |
-| `tau`    | `float` | 토크 [Nm] |
-| `pattern`| `int`   | 제어 패턴 코드 |
-| `err`    | `str` 또는 `null` | 모터 오류 상태 |
 
 ---
 
