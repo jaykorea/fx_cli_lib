@@ -214,8 +214,8 @@ status() -> dict
 | `pos` | `float` | rad   | 모터 위치 |
 | `vel` | `float` | rad/s | 모터 속도 |
 | `tau` | `float` | Nm    | 모터 토크 |
-| 'pattern' | 'int' | code | 0=정지/대기, 1=보정, 2=작동 |
-| 'err' | 'str' | - | 모터 오류 상태 |
+| `pattern` | `int` | code | 0=정지/대기, 1=보정, 2=작동 |
+| `err` | `str` | - | 모터 오류 상태 |
 
 
 ##### `IMU` 내부 구조
