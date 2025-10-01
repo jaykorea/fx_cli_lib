@@ -15,20 +15,6 @@ cli = fx_cli.FxCli("192.168.10.10", 5101)
 ids_specific = [1, 2, 3, 4]
 
 try:
-    # START (ACK: OK <START ...>)
-    # if not cli.motor_start(ids_specific):
-    #     print("Motor start failed")
-    # else:
-    #     print("Motor start succeeded")
-
-    # Operation Control
-    mit_groups = [
-        {"id": ids_specific[0], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
-        {"id": ids_specific[1], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
-        {"id": ids_specific[2], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
-        {"id": ids_specific[3], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
-    ]
-
     T = 3600
     dt = 0.02
     steps = int(T / dt)
@@ -37,20 +23,6 @@ try:
     missed_packets_count = 0  # 놓친 패킷 수를 저장할 변수
     print(f"📊 테스트를 시작합니다. 예상 실행 시간: {T}초, 총 스텝: {steps}회")
     time.sleep(2)
-
-    # MCU PING Test
-    # result = cli.mcu_ping()
-    # print(result)
-
-    # # MCU Identify Test
-    # result = cli.mcu_whoami()
-    # print(result)
-
-    # start = time.time()
-    # for i in range(steps):
-    #     cli.operation_control(mit_groups)
-    #     time.sleep(dt)
-    # end = time.time()
 
     # Get Obs
     start = time.time()
@@ -109,15 +81,6 @@ try:
     print(f"  - 패킷 손실률: {loss_percentage:.4f} %")
     print("="*40)
 
-
-    # Get Status
-    # start = time.time()
-    # for i in range(steps):
-    #     status = cli.status()
-    #     print(status)
-    #     time.sleep(dt)
-    # end = time.time()
-
     # Motor Stop
     if not cli.motor_stop(ids_specific):
         print("Motor stop failed")
@@ -126,17 +89,3 @@ try:
 
 except Exception as e:
     print("Error during specific-ID flow:", e)
-
-# 2) 브로드캐스트 제어 예시
-# ids_broadcast = [0xff]
-
-# try:
-#     cli.motor_stop(ids_broadcast)
-#     print("motor_stop(broadcast) OK")
-
-#     # 필요 시 E-STOP 브로드캐스트
-#     # cli.motor_estop(ids_broadcast)
-#     # print("motor_estop(broadcast) OK")
-
-# except Exception as e:
-#     print("Error during broadcast flow:", e)
