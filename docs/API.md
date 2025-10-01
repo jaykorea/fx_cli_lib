@@ -76,7 +76,8 @@ operation_control(groups: list[dict]) -> None
 req(ids: list[int]) -> dict
 status() -> dict
 ```
-- 반환: 파싱된 dict
+- 반환: MCU 응답을 dict 형태로 반환
+- 단, 수신 대기 큐에 패킷이 없을 경우 빈 dict ({}) 반환
 
 ### 기타
 ```python
