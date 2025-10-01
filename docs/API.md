@@ -22,6 +22,8 @@ bool motor_setzero(const std::vector<uint8_t>& ids);
   - 브로드캐스트: `0xFF` 사용
 - 반환: 기대 `<TAG>` ACK 수신 시 `true`
 
+---
+
 ### MIT 제어
 ```cpp
 void operation_control(const std::vector<uint8_t>& ids,
