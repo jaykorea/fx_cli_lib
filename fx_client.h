@@ -58,7 +58,7 @@ private:
 
   // 기본 대기시간(ms)
   int timeout_ms_ = 200;
-  int timeout_ms_rt_ = 2;
+  int timeout_ms_rt_ = 5;
 
   // ──────────────────────────
   // 내부 UDP 소켓 + 수신 스레드/큐 관리
