@@ -210,18 +210,11 @@ status() -> dict
 | `err` | `str` | - | 모터 오류 상태 |
 
 
-##### `IMU` 내부 구조 (수정중)
+##### `IMU` 내부 구조 (수정 및 반영중)
 | 키  | 타입   | 단위 | 설명 |
 |-----|--------|------|------|
-| `r` | `float` | deg | Roll |
-| `p` | `float` | deg | Pitch |
-| `y` | `float` | deg | Yaw |
-| `gx` | `float` | rad/s | 자이로 X축 |
-| `gy` | `float` | rad/s | 자이로 Y축 |
-| `gz` | `float` | rad/s | 자이로 Z축 |
-| `pgx` | `float` | g | 투영 중력 x축 |
-| `pgy` | `float` | g | 투영 중력 y축 |
-| `pgz` | `float` | g | 투영 중력 Z축 |
+| `pattern` | `int` | code | 0=정지/대기, 1=보정, 2=작동 |
+| `err` | `str` | - | 모터 오류 상태 |
 
 ---
 
