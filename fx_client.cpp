@@ -1,3 +1,10 @@
+// fx_client_optimized.cpp
+// - UDP recv: poll() + non-blocking recv()
+// - Lock-free ring buffer for RX queue
+// - Optional RT priority (SCHED_FIFO)
+// - Reduced string copies; use strncasecmp for tag match
+// - Same public API as before
+
 #ifdef DEBUG
 #define FXCLI_LOG(x) do { std::cerr << x << std::endl; } while(0)
 #else
@@ -15,9 +22,6 @@
 #include <cctype>
 #include <chrono>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <deque>
 #include <atomic>
 #include <vector>
 
@@ -28,6 +32,11 @@
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <poll.h>
+#include <pthread.h>
+#include <strings.h>   // strncasecmp
+#include <fcntl.h>    // <-- fcntl(), F_GETFL, F_SETFL, O_NONBLOCK
+
 
 #ifdef DEBUG
 static ElapsedTimer g_timer_ack("chk_ACK");
@@ -43,16 +52,10 @@ static inline void trim(std::string &s) {
     s.assign(s, b, e - b + 1);
 }
 
-static inline std::string upper_copy(std::string s) {
-    for (char &c : s)
-        c = static_cast<char>(::toupper(static_cast<unsigned char>(c)));
-    return s;
-}
-
 // "OK <TAG>; ..." 혹은 "OK <TAG> ..." 에서 <TAG> 추출
 static bool extract_tag_word(const std::string &resp, std::string &out_word) {
-    auto l = resp.find('<');
-    auto r = resp.find('>');
+    const size_t l = resp.find('<');
+    const size_t r = resp.find('>');
     if (l == std::string::npos || r == std::string::npos || r <= l + 1) return false;
     std::string inside = resp.substr(l + 1, r - l - 1);
     trim(inside);
@@ -63,39 +66,21 @@ static bool extract_tag_word(const std::string &resp, std::string &out_word) {
     return !out_word.empty();
 }
 
-// OK 응답 검증 (단발용, 유지)
-static void verify_ack_or_throw(const std::string &resp, const char *expect_tag) {
-    if (resp.empty()) throw std::runtime_error("Timeout or empty reply from MCU");
-
-    std::string s = resp;
-    trim(s);
-    std::string su = upper_copy(s);
-    if (su.rfind("OK", 0) != 0)
-        throw std::runtime_error("Unexpected reply (no OK): " + s);
-
-    std::string tag;
-    if (!extract_tag_word(s, tag))
-        throw std::runtime_error("Missing <TAG> in reply: " + s);
-
-    if (upper_copy(tag) != upper_copy(expect_tag))
-        throw std::runtime_error("ACK TAG mismatch: expected '" +
-                                 std::string(expect_tag) + "' got '" + tag + "'");
+// float -> 문자열 (snprintf 기반, 빠르고 할당 없음)
+static inline const char* format_float(char* buf, size_t bufsz, float v) {
+    // 소수 6자리 고정 후 뒷 0 제거
+    int n = snprintf(buf, bufsz, "%.6f", v);
+    if (n <= 0) { buf[0] = '0'; buf[1] = 0; return buf; }
+    // 뒤 0 트림
+    int end = n - 1;
+    while (end > 0 && buf[end] == '0') --end;
+    if (end > 0 && buf[end] == '.') ++end; // "1." -> "1."
+    else end += 1;
+    buf[end] = '\0';
+    return buf;
 }
 
-// float -> 문자열 변환
-static std::string format_float(float v) {
-    std::ostringstream ss;
-    ss << std::setprecision(6) << std::fixed << v;
-    std::string s = ss.str();
-    size_t pos = s.find_last_not_of('0');
-    if (pos != std::string::npos) {
-        if (s[pos] == '.') s.erase(pos + 2);
-        else s.erase(pos + 1);
-    }
-    return s;
-}
-
-// ID 그룹 빌드
+// ID 그룹 빌드: "<1 2 3>"
 static std::string build_id_group(const std::vector<uint8_t> &ids) {
     std::ostringstream oss;
     oss << '<';
@@ -107,9 +92,18 @@ static std::string build_id_group(const std::vector<uint8_t> &ids) {
     return oss.str();
 }
 
+// 응답 OK + <TAG> 대략 체크 (빠른 전처리)
+static inline bool begins_with_ok(const std::string& s) {
+    // 대소문자 무시 "OK"
+    if (s.size() < 2) return false;
+    return (s[0] == 'O' || s[0] == 'o') &&
+           (s[1] == 'K' || s[1] == 'k');
+}
+
 } // namespace
 
-// ========= UDP 소켓 + RX 스레드/링버퍼 =========
+
+// ========= FxCli 구현 =========
 class FxCli::UdpSocket {
 public:
     struct RxPacket {
@@ -117,15 +111,76 @@ public:
         std::chrono::steady_clock::time_point t_arrival;
     };
 
-    UdpSocket(const std::string &ip, uint16_t port, size_t max_queue = 256)
-    : max_queue_(max_queue)
+    // lock-free ring buffer (single producer/consumer)
+    struct RingBuf {
+        static constexpr size_t N = 256;     // 필요한 경우 64~256 권장
+        RxPacket buf[N];
+        std::atomic<size_t> head{0};
+        std::atomic<size_t> tail{0};
+
+        bool push(RxPacket&& pkt) {
+            size_t h = head.load(std::memory_order_relaxed);
+            size_t n = (h + 1) % N;
+            if (n == tail.load(std::memory_order_acquire)) {
+                // full -> drop oldest
+                size_t t = tail.load(std::memory_order_relaxed);
+                tail.store((t + 1) % N, std::memory_order_release);
+            }
+            buf[h] = std::move(pkt);
+            head.store(n, std::memory_order_release);
+            return true;
+        }
+        bool pop(RxPacket& out) {
+            size_t t = tail.load(std::memory_order_acquire);
+            if (t == head.load(std::memory_order_acquire)) return false;
+            out = buf[t];
+            tail.store((t + 1) % N, std::memory_order_release);
+            return true;
+        }
+        void clear() {
+            tail.store(head.load(std::memory_order_acquire), std::memory_order_release);
+        }
+        bool empty() const {
+            return tail.load(std::memory_order_acquire) == head.load(std::memory_order_acquire);
+        }
+        // 최신부터 역방향 스캔: 조건자 만족하는 첫 패킷 반환
+        template <typename Pred>
+        bool find_latest(Pred pred, RxPacket& out) {
+            size_t h = head.load(std::memory_order_acquire);
+            size_t t = tail.load(std::memory_order_acquire);
+            if (t == h) return false;
+            // 역방향 스캔
+            size_t idx = (h + N - 1) % N;
+            while (true) {
+                if (idx == (size_t)-1) break;
+                if (idx == (t + N - 1) % N && !pred(buf[idx])) break;
+                if (pred(buf[idx])) {
+                    out = buf[idx];
+                    // idx 이전은 모두 drop (최신 이후는 보존)
+                    tail.store((idx + 1) % N, std::memory_order_release);
+                    return true;
+                }
+                if (idx == t) break;
+                idx = (idx + N - 1) % N;
+            }
+            return false;
+        }
+    };
+
+    UdpSocket(const std::string &ip, uint16_t port, int recv_buf_bytes = (64 * 1024))
     {
         sock_ = ::socket(AF_INET, SOCK_DGRAM, 0);
         if (sock_ < 0) throw std::runtime_error("socket() failed");
 
-        // 넉넉한 수신 버퍼(버스트 대비)
-        int rcvbuf = 1 << 20; // 1MB
-        ::setsockopt(sock_, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+        // 수신 버퍼 (과도하게 크면 TLB miss ↑ → 64KB 권장)
+        if (recv_buf_bytes > 0) {
+            int rcvbuf = recv_buf_bytes;
+            ::setsockopt(sock_, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+        }
+
+        // 비차단 모드
+        int flags = ::fcntl(sock_, F_GETFL, 0);
+        ::fcntl(sock_, F_SETFL, flags | O_NONBLOCK);
 
         std::memset(&addr_, 0, sizeof(addr_));
         addr_.sin_family = AF_INET;
@@ -141,7 +196,10 @@ public:
 
         // Rx 스레드 시작
         run_rx_.store(true);
-        rx_thread_ = std::thread([this]{ this->rx_loop_blocking(); });
+        rx_thread_ = std::thread([this]{ this->rx_loop_polling(); });
+
+        // 가능하면 RT 우선순위 부여 (실패해도 무시)
+        set_thread_rt_priority(rx_thread_, 80);
     }
 
     ~UdpSocket() {
@@ -165,63 +223,73 @@ public:
 
     // ---- 큐 유틸 ----
     void flush_queue() {
-        std::lock_guard<std::mutex> lk(m_);
         q_.clear();
     }
 
-    // OK <TAG>; ... 패킷이 올 때까지 대기
-    bool wait_for_ok_tag(const std::string& expect_tag_upper,
-                        std::string& out_ok,
-                        int timeout_ms)
-    {
+    // OK <TAG> 패킷 대기
+    bool wait_for_ok_tag(const char* expect_tag_upper, std::string& out_ok, int timeout_ms) {
         auto deadline = std::chrono::steady_clock::now() +
                         std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : 0);
 
-        std::unique_lock<std::mutex> lk(m_);
-        auto pred = [this, &expect_tag_upper, &out_ok]() -> bool {
-            for (auto it = q_.rbegin(); it != q_.rend(); ++it) { // ★ 뒤에서부터
-                if (upper_copy(it->data).rfind("OK", 0) == 0) {
-                    std::string tag;
-                    if (extract_tag_word(it->data, tag) &&
-                        upper_copy(tag) == expect_tag_upper)
-                    {
-                        out_ok = it->data;
-                        // 최신 패킷 이후는 남기고, 찾은 것 이전만 삭제
-                        q_.erase(q_.begin(), it.base());
-                        return true;
-                    }
-                }
-            }
-            return false;
-        };
+        // 즉시 스캔
+        if (q_.find_latest([&](const RxPacket& p){
+            if (!begins_with_ok(p.data)) return false;
+            std::string tag;
+            if (!extract_tag_word(p.data, tag)) return false;
+            return ::strncasecmp(tag.c_str(), expect_tag_upper, tag.size()) == 0;
+        }, tmp_))
+        {
+            out_ok = std::move(tmp_.data);
+            return true;
+        }
 
-        if (timeout_ms <= 0) {
-            return pred(); // 논블로킹
+        if (timeout_ms <= 0) return false;
+
+        // 시간 내 폴링 (lock-free 큐라서 바쁜 대기 대신 짧은 sleep/yield 혼합)
+        while (std::chrono::steady_clock::now() < deadline) {
+            // 빠른 재확인
+            if (q_.find_latest([&](const RxPacket& p){
+                if (!begins_with_ok(p.data)) return false;
+                std::string tag;
+                if (!extract_tag_word(p.data, tag)) return false;
+                return ::strncasecmp(tag.c_str(), expect_tag_upper, tag.size()) == 0;
+            }, tmp_))
+            {
+                out_ok = std::move(tmp_.data);
+                return true;
+            }
+            // 아주 짧은 sleep (wake-up 지터 완화)
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
-        while (cv_.wait_until(lk, deadline, pred) == false) {
-            if (std::chrono::steady_clock::now() >= deadline) return false;
-        }
-        return true;
+        return false;
     }
 
-    // 아무 패킷이나 하나(가장 최근) 대기 - 태그 검증 없이
+    // 아무 패킷이나 하나(가장 최근) 대기
     bool wait_for_any(std::string& out, int timeout_ms) {
         auto deadline = std::chrono::steady_clock::now() +
                         std::chrono::milliseconds(timeout_ms > 0 ? timeout_ms : 0);
-        std::unique_lock<std::mutex> lk(m_);
-        auto pred = [this, &out]() -> bool {
+
+        if (!q_.empty()) {
+            RxPacket p;
+            // 최신 하나만 소비하려면 tail -> head-1 까지 모두 버리고 마지막 pop
+            // 여기서는 가장 마지막만 pop 하는 간단 전략:
+            // 1) 최신까지 비움
+            while (q_.pop(p)) { /* drain */ }
+            out = std::move(p.data);
+            return true;
+        }
+        if (timeout_ms <= 0) return false;
+
+        while (std::chrono::steady_clock::now() < deadline) {
             if (!q_.empty()) {
-                out = q_.back().data;
-                q_.clear();
+                RxPacket p;
+                while (q_.pop(p)) {}
+                out = std::move(p.data);
                 return true;
             }
-            return false;
-        };
-        if (timeout_ms <= 0) return pred();
-        while (cv_.wait_until(lk, deadline, pred) == false) {
-            if (std::chrono::steady_clock::now() >= deadline) return false;
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
-        return true;
+        return false;
     }
 
 private:
@@ -230,41 +298,46 @@ private:
 
     std::atomic<bool> run_rx_{false};
     std::thread rx_thread_;
-    std::mutex m_;
-    std::condition_variable cv_;
-    std::deque<RxPacket> q_;
-    size_t max_queue_;
+    RingBuf q_;
+    RxPacket tmp_;
 
     static void close_socket(int s) { ::close(s); }
 
-    void rx_loop_blocking() {
-        // 블로킹 recv 루프
+    static void set_thread_rt_priority(std::thread& th, int prio) {
+        struct sched_param sp;
+        sp.sched_priority = prio;
+        pthread_setschedparam(th.native_handle(), SCHED_FIFO, &sp);
+        // 실패 시 무시 (권한 없을 수 있음)
+    }
+
+    void rx_loop_polling() {
+        struct pollfd pfd;
+        pfd.fd = sock_;
+        pfd.events = POLLIN;
+
+        char buf[2048]; // 한 패킷 충분
         while (run_rx_.load()) {
-            char buf[1024];
-            ssize_t n = ::recv(sock_, buf, sizeof(buf) - 1, 0);
-            if (n <= 0) {
-                // 소켓 종료/에러 시 잠깐 쉼
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
-            }
-            buf[n] = '\0';
-
-            RxPacket pkt;
-            pkt.data = std::string(buf, (size_t)n);
-            pkt.t_arrival = std::chrono::steady_clock::now();
-
-            {
-                std::lock_guard<std::mutex> lk(m_);
-                if (q_.size() >= max_queue_) {
-                    // 오래된 것부터 드랍
-                    q_.pop_front();
+            int r = ::poll(&pfd, 1, 1); // 1 ms timeout
+            if (r <= 0) continue;
+            if (pfd.revents & POLLIN) {
+                for (;;) {
+                    ssize_t n = ::recv(sock_, buf, sizeof(buf), MSG_DONTWAIT);
+                    if (n < 0) {
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+                        // 기타 에러는 잠깐 쉼
+                        std::this_thread::sleep_for(std::chrono::microseconds(50));
+                        break;
+                    }
+                    RxPacket pkt;
+                    pkt.data.assign(buf, buf + n);
+                    pkt.t_arrival = std::chrono::steady_clock::now();
+                    q_.push(std::move(pkt));
                 }
-                q_.push_back(std::move(pkt));
             }
-            cv_.notify_all();
         }
     }
 };
+
 
 // ========= FxCli =========
 FxCli::FxCli(const std::string &ip, uint16_t port)
@@ -284,24 +357,17 @@ void FxCli::send_cmd(const std::string &cmd) {
     FXCLI_LOG("[SEND] " << cmd);
 }
 
-// ★ NEW: 원하는 TAG가 나올 때까지 큐에서 대기
-bool FxCli::send_cmd_wait_ok_tag(const std::string& cmd,
-                              const char* expect_tag,
-                              int timeout_ms)
+// 원하는 TAG가 나올 때까지 대기
+bool FxCli::send_cmd_wait_ok_tag(const std::string& cmd, const char* expect_tag, int timeout_ms)
 {
 #ifdef DEBUG
     g_timer_ack.startTimer();
 #endif
-    // 0) 직전 남은 큐 드레인
     socket_->flush_queue();
-
-    // 1) 송신
     send_cmd(cmd);
 
-    // 2) 기대 TAG 대기
     std::string out;
-    bool ok = socket_->wait_for_ok_tag(upper_copy(expect_tag), out, timeout_ms);
-
+    bool ok = socket_->wait_for_ok_tag(expect_tag, out, timeout_ms);
 #ifdef DEBUG
     g_timer_ack.stopTimer();
     if (ok) std::cout << "[DEBUG] " << expect_tag << " OK: " << out << std::endl;
@@ -312,40 +378,45 @@ bool FxCli::send_cmd_wait_ok_tag(const std::string& cmd,
 
 // ---- 공개 API ----
 std::string FxCli::mcu_ping() {
-    std::string cmd = "AT+PING";
     std::string out;
-    send_cmd(cmd);
-    bool ok = socket_->wait_for_ok_tag("PING", out, timeout_ms_);   // ★ 태그 검증 - ON
-    
+    send_cmd("AT+PING");
+#ifdef DEBUG
+    g_timer_ack.startTimer();
+#endif
+    bool ok = socket_->wait_for_ok_tag("PING", out, timeout_ms_);
+#ifdef DEBUG
+    g_timer_ack.stopTimer();
+#endif
     return ok ? out : std::string();
 }
 
 std::string FxCli::mcu_whoami() {
-    std::string cmd = "AT+WHOAMI";
     std::string out;
-    send_cmd(cmd);
-    bool ok = socket_->wait_for_ok_tag("WHOAMI", out, timeout_ms_);   // ★ 태그 검증 - ON
-    
+    send_cmd("AT+WHOAMI");
+#ifdef DEBUG
+    g_timer_ack.startTimer();
+#endif
+    bool ok = socket_->wait_for_ok_tag("WHOAMI", out, timeout_ms_);
+#ifdef DEBUG
+    g_timer_ack.stopTimer();
+#endif
     return ok ? out : std::string();
 }
 
 bool FxCli::motor_start(const std::vector<uint8_t> &ids) {
-    std::string cmd = "AT+START " + build_id_group(ids);
+    const std::string cmd = "AT+START " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "START", timeout_ms_);
 }
-
 bool FxCli::motor_stop(const std::vector<uint8_t> &ids) {
-    std::string cmd = "AT+STOP " + build_id_group(ids);
+    const std::string cmd = "AT+STOP " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "STOP", timeout_ms_);
 }
-
 bool FxCli::motor_estop(const std::vector<uint8_t> &ids) {
-    std::string cmd = "AT+ESTOP " + build_id_group(ids);
+    const std::string cmd = "AT+ESTOP " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "ESTOP", timeout_ms_);
 }
-
 bool FxCli::motor_setzero(const std::vector<uint8_t> &ids) {
-    std::string cmd = "AT+SETZERO " + build_id_group(ids);
+    const std::string cmd = "AT+SETZERO " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "SETZERO", timeout_ms_);
 }
 
@@ -359,42 +430,54 @@ void FxCli::operation_control(const std::vector<uint8_t> &ids,
     if (!(pos.size() == n && vel.size() == n && kp.size() == n && kd.size() == n && tau.size() == n))
         throw std::invalid_argument("All parameter arrays must have the same length");
 
-    std::ostringstream oss;
-    oss << "AT+MIT ";
+    // 동적 할당 최소화
+    std::string cmd;
+    cmd.reserve(16 * n + 8);
+    cmd.append("AT+MIT ");
+    char fb[32];
+
     for (size_t i = 0; i < n; ++i) {
-        oss << '<' << static_cast<unsigned>(ids[i]) << ' '
-            << format_float(pos[i]) << ' ' << format_float(vel[i]) << ' '
-            << format_float(kp[i])  << ' ' << format_float(kd[i])  << ' '
-            << format_float(tau[i]) << '>';
-        if (i + 1 < n) oss << ' ';
+        cmd.push_back('<');
+        // id
+        {
+            char ib[8];
+            int k = snprintf(ib, sizeof(ib), "%u", (unsigned)ids[i]);
+            cmd.append(ib, ib + k);
+            cmd.push_back(' ');
+        }
+        // pos vel kp kd tau
+        cmd.append(format_float(fb, sizeof(fb), pos[i]));
+        cmd.push_back(' ');
+        cmd.append(format_float(fb, sizeof(fb), vel[i]));
+        cmd.push_back(' ');
+        cmd.append(format_float(fb, sizeof(fb), kp[i]));
+        cmd.push_back(' ');
+        cmd.append(format_float(fb, sizeof(fb), kd[i]));
+        cmd.push_back(' ');
+        cmd.append(format_float(fb, sizeof(fb), tau[i]));
+        cmd.push_back('>');
+        if (i + 1 < n) cmd.push_back(' ');
     }
-    send_cmd(oss.str());
+    send_cmd(cmd);
 }
 
-// ---- 데이터 요청 ----
-std::string FxCli::req(const std::vector<uint8_t> &ids)
-{
-    std::string cmd = "AT+REQ " + build_id_group(ids);
-
+std::string FxCli::req(const std::vector<uint8_t> &ids) {
+    const std::string cmd = "AT+REQ " + build_id_group(ids);
 #ifdef DEBUG
     g_timer_ack.startTimer();
 #endif
     send_cmd(cmd);
 
     std::string out;
-    bool ok = socket_->wait_for_ok_tag("REQ", out, timeout_ms_rt_);   // ★ 태그 검증 - ON
-    // bool ok = socket_->wait_for_any(out, timeout_ms_);   // ★ 태그 검증 - OFF
-    
+    bool ok = socket_->wait_for_ok_tag("REQ", out, timeout_ms_rt_);
 #ifdef DEBUG
     g_timer_ack.stopTimer();
 #endif
     return ok ? out : std::string();
 }
 
-std::string FxCli::status()
-{
-    std::string cmd = "AT+STATUS";
-
+std::string FxCli::status() {
+    const std::string cmd = "AT+STATUS";
 #ifdef DEBUG
     g_timer_ack.startTimer();
 #endif
@@ -402,8 +485,7 @@ std::string FxCli::status()
     send_cmd(cmd);
 
     std::string out;
-    bool ok = socket_->wait_for_ok_tag("STATUS", out, timeout_ms_rt_);   // ★ 태그 검증 - ON
-    // bool ok = socket_->wait_for_any(out, timeout_ms_);   // ★ 태그 검증 없음
+    bool ok = socket_->wait_for_ok_tag("STATUS", out, timeout_ms_rt_);
 #ifdef DEBUG
     g_timer_ack.stopTimer();
 #endif

@@ -12,7 +12,7 @@ the text-based AT command protocol via the `fx_cli` module.
 cli = fx_cli.FxCli("192.168.10.10", 5101)
 
 # 1) 특정 ID 제어 예시
-ids_specific = [1, 2, 3, 4]
+ids_specific = [1, 2]
 
 try:
     # START (ACK: OK <START ...>)
@@ -22,12 +22,12 @@ try:
     #     print("Motor start succeeded")
 
     # Operation Control
-    mit_groups = [
-        {"id": ids_specific[0], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
-        {"id": ids_specific[1], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
-        {"id": ids_specific[2], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
-        {"id": ids_specific[3], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
-    ]
+    # mit_groups = [
+    #     {"id": ids_specific[0], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
+    #     {"id": ids_specific[1], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
+    #     {"id": ids_specific[2], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
+    #     {"id": ids_specific[3], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.1, "tau": 0.0},
+    # ]
 
     T = 5
     dt = 0.02
