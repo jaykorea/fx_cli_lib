@@ -17,16 +17,15 @@ public:
   // ──────────────────────────
   // 공개 명령 API
   // ──────────────────────────
-  // 모터 구동/정지/비상정지/ : MCU로 명령 전송 후 원하는 TAG가 올 때까지 큐에서 대기
   std::string mcu_ping();
   std::string mcu_whoami();
 
-  bool motor_start(const std::vector<uint8_t>& ids);
-  bool motor_stop (const std::vector<uint8_t>& ids);
-  bool motor_estop(const std::vector<uint8_t>& ids);
-  bool motor_setzero(const std::vector<uint8_t> &ids);
+  bool motor_start (const std::vector<uint8_t>& ids);
+  bool motor_stop  (const std::vector<uint8_t>& ids);
+  bool motor_estop (const std::vector<uint8_t>& ids);
+  bool motor_setzero(const std::vector<uint8_t>& ids);
 
-  // MIT 제어 
+  // MIT 제어
   void operation_control(const std::vector<uint8_t>& ids,
                          const std::vector<float>& pos,
                          const std::vector<float>& vel,
@@ -35,30 +34,26 @@ public:
                          const std::vector<float>& tau);
 
   // 데이터 질의
-  //  - req   : <REQ> 태그가 올 때까지 큐에서 대기 후 가장 최근 패킷 반환
-  //  - status: <STATUS> 태그가 올 때까지 대기 후 패킷 반환
-  //  - timeout_ms: 전체 대기 시간(ms)
   std::string req   (const std::vector<uint8_t>& ids);
   std::string status();
 
-  // 큐에 남아있는 모든 수신 패킷을 즉시 폐기
+  // 큐에 남아있는 모든 수신 패킷 즉시 폐기
   void flush();
 
 private:
   // ──────────────────────────
   // 내부 I/O 유틸
   // ──────────────────────────
-  // 단순 송신
   void send_cmd(const std::string& cmd);
 
   // 원하는 TAG가 나올 때까지 큐에서 대기
   bool send_cmd_wait_ok_tag(const std::string& cmd,
-                         const char* expect_tag,
-                         int timeout_ms);
+                            const char* expect_tag,
+                            int timeout_ms);
 
-  // 기본 대기시간(ms)
-  int timeout_ms_ = 200;
-  int timeout_ms_rt_ = 5;
+  // [MOD] RT/일반 명령의 대기시간(ms) 분리
+  int timeout_ms_    = 200;  // 일반 명령
+  int timeout_ms_rt_ = 5;    // 실시간 명령(REQ/STATUS)
 
   // ──────────────────────────
   // 내부 UDP 소켓 + 수신 스레드/큐 관리
