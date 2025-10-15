@@ -373,6 +373,10 @@ bool FxCli::send_cmd_wait_ok_tag(const std::string& cmd, const char* expect_tag,
     if (ok) std::cout << "[DEBUG] " << expect_tag << " OK: " << out << std::endl;
     else    std::cerr << "[DEBUG] " << expect_tag << " FAIL: Timeout waiting correct tag" << std::endl;
 #endif
+    if (ok) {
+        constexpr int POST_OK_DELAY_MS = 2000;  // 2000 ms = 2 seconds
+        std::this_thread::sleep_for(std::chrono::milliseconds(POST_OK_DELAY_MS));
+    }
     return ok;
 }
 
@@ -404,6 +408,7 @@ std::string FxCli::mcu_whoami() {
 }
 
 bool FxCli::motor_start(const std::vector<uint8_t> &ids) {
+    bool st = false;
     const std::string cmd = "AT+START " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "START", timeout_ms_);
 }
