@@ -330,13 +330,13 @@ private:
 
         while (run_rx_.load(std::memory_order_relaxed)) {
             // [MOD] 타임아웃 0 또는 매우 짧게, busy 방지는 아래 yield로
-            int r = ::poll(&pfd, 1, 0);
-            if (r <= 0) { std::this_thread::yield(); continue; }
+            int r = ::poll(&pfd, 1, 1);
+            if (r <= 0) continue;
 
             if (pfd.revents & POLLIN) {
                 for (;;) {
                     // [MOD] MSG_TRUNC로 절단 감지
-                    ssize_t n = ::recv(sock_, buf.data(), buf.size(), MSG_DONTWAIT | MSG_TRUNC);
+                    ssize_t n = ::recv(sock_, buf.data(), buf.size(), MSG_DONTWAIT);
                     if (n < 0) {
                         if (errno == EAGAIN || errno == EWOULDBLOCK) break;
                         std::this_thread::yield();
