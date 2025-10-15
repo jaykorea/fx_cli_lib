@@ -12,14 +12,14 @@ the text-based AT command protocol via the `fx_cli` module.
 cli = fx_cli.FxCli("192.168.10.10", 5101)
 
 # 1) 특정 ID 제어 예시
-ids_specific = [1, 2]
+ids_specific = [1, 2, 3, 4]
 
 try:
     # START (ACK: OK <START ...>)
-    # if not cli.motor_start(ids_specific):
-    #     print("Motor start failed")
-    # else:
-    #     print("Motor start succeeded")
+    if not cli.motor_start(ids_specific):
+        print("Motor start failed")
+    else:
+        print("Motor start succeeded")
 
     # Operation Control
     # mit_groups = [
