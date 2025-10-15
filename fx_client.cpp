@@ -198,7 +198,7 @@ public:
 
         run_rx_.store(true);
         rx_thread_ = std::thread([this]{ this->rx_loop_polling(); });
-        set_thread_rt_priority(rx_thread_, 80);
+        //set_thread_rt_priority(rx_thread_, 80);
     }
 
     ~UdpSocket() {
@@ -226,7 +226,10 @@ public:
             if (!extract_tag_word(p.data, tag)) return false;
             return tag_equals_ci(tag, expect_tag_upper);
         };
-        if (q_.find_latest(pred, tmp_)) { out_ok = std::move(tmp_.data); return true; }
+        if (q_.find_latest(pred, tmp_)) {
+            out_ok = std::move(tmp_.data);
+            return true;
+        }
         while (std::chrono::steady_clock::now() < deadline) {
             if (q_.find_latest(pred, tmp_)) { out_ok = std::move(tmp_.data); return true; }
             std::this_thread::yield();
@@ -377,10 +380,16 @@ void FxCli::operation_control(const std::vector<uint8_t> &ids,
 }
 
 std::string FxCli::req(const std::vector<uint8_t> &ids) {
+    #ifdef DEBUG
+            g_timer_ack.startTimer();
+    #endif
     std::string out;
     socket_->flush_queue();
     send_cmd("AT+REQ " + build_id_group(ids));
     bool ok = socket_->wait_for_ok_tag("REQ", out, timeout_ms_rt_);
+    #ifdef DEBUG
+            g_timer_ack.stopTimer();
+    #endif
     return ok ? out : std::string();
 }
 
