@@ -1,6 +1,6 @@
 // fx_client_optimized.cpp
 // - UDP recv: poll() + non-blocking recv()
-// - Lock-free ring buffer for RX queue
+// - Lock-free ring buffer for RX queue (SPSC-safe; producer never touches tail)   // [NOTE]
 // - Optional RT priority (SCHED_FIFO)
 // - Reduced string copies; use strncasecmp for tag match
 // - Same public API as before
@@ -24,8 +24,9 @@
 #include <thread>
 #include <atomic>
 #include <vector>
-#include <array>       // [MOD] rx 버퍼를 std::array로 사용
+#include <array>
 
+#include <algorithm>   // [OPT] std::max
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -68,7 +69,7 @@ static bool extract_tag_word(const std::string &resp, std::string &out_word) {
     return !out_word.empty();
 }
 
-// [MOD] 태그 비교: 기대 태그와 길이 동일 + 대소문자 무시 완전 일치
+// 태그 비교: 기대 태그와 길이 동일 + 대소문자 무시 완전 일치        // [FIX]
 static inline bool tag_equals_ci(const std::string& tag, const char* expect_upper) {
     const size_t elen = std::strlen(expect_upper);
     if (tag.size() != elen) return false;
@@ -83,9 +84,9 @@ static inline const char* format_float(char* buf, size_t bufsz, float v) {
     // 뒤 0 트림
     int end = n - 1;
     while (end > 0 && buf[end] == '0') --end;
-    // [MOD] "1." -> "1" 로 정규화(이전 코드는 점을 유지)
+    // "1." -> "1" 로 정규화                                       // [FIX]
     if (end > 0 && buf[end] == '.') {
-        // 점을 제거: end는 현재 '.' 이므로 그대로 널 종료
+        // '.' 위치에 널 종료
     } else {
         end += 1;
     }
@@ -124,26 +125,34 @@ public:
         std::chrono::steady_clock::time_point t_arrival;
     };
 
-    // lock-free ring buffer (single producer/consumer)
+    // lock-free ring buffer (single producer/consumer, SPSC-safe)
     struct RingBuf {
-        static constexpr size_t N = 256;
-        RxPacket buf[N];
-        std::atomic<size_t> head{0};
-        std::atomic<size_t> tail{0};
-        alignas(64) std::atomic<size_t> dropped_newest{0}; // [NEW] full 시 최신 드롭 카운터
+        static constexpr size_t N = 256; // [OPT] 2의 제곱으로 두고 & (N-1) 최적화 가능
 
+        RxPacket buf[N];
+
+        // [OPT] false sharing 완화를 위해 캐시라인 정렬
+        alignas(64) std::atomic<size_t> head{0};   // producer 전용
+        alignas(64) std::atomic<size_t> tail{0};   // consumer 전용
+
+        alignas(64) std::atomic<size_t> dropped_newest{0}; // full 시 최신 드롭 카운터  // [OPT]
+
+        // Producer only
         bool push(RxPacket&& pkt) {
             size_t h = head.load(std::memory_order_relaxed);
             size_t n = (h + 1) % N;
+
+            // full이면 '새로 온 패킷'을 드롭. producer는 tail을 절대 건드리지 않음.   // [FIX]
             if (n == tail.load(std::memory_order_acquire)) {
-                // full -> drop oldest
-                size_t t = tail.load(std::memory_order_relaxed);
-                tail.store((t + 1) % N, std::memory_order_release);
+                dropped_newest.fetch_add(1, std::memory_order_relaxed);
+                return false;
             }
             buf[h] = std::move(pkt);
             head.store(n, std::memory_order_release);
             return true;
         }
+
+        // Consumer only
         bool pop(RxPacket& out) {
             size_t t = tail.load(std::memory_order_acquire);
             if (t == head.load(std::memory_order_acquire)) return false;
@@ -151,16 +160,20 @@ public:
             tail.store((t + 1) % N, std::memory_order_release);
             return true;
         }
+
+        // Consumer only
         void clear() {
             tail.store(head.load(std::memory_order_acquire), std::memory_order_release);
         }
+
         bool empty() const {
             return tail.load(std::memory_order_acquire) == head.load(std::memory_order_acquire);
         }
-        // 최신부터 역방향 스캔: 조건자 만족하는 첫 패킷 반환
+
+        // 최신부터 역방향 스캔: 조건자 만족하는 첫 패킷 반환 (consumer only)
         template <typename Pred>
         bool find_latest(Pred pred, RxPacket& out) {
-            // [MOD] 경계/종료 조건을 명확화
+            // 경계/종료 조건 명확화                                          // [FIX]
             const size_t h = head.load(std::memory_order_acquire);
             const size_t t = tail.load(std::memory_order_acquire);
             if (t == h) return false;
@@ -170,7 +183,7 @@ public:
             for (size_t c = 0; c < span; ++c) {
                 if (pred(buf[i])) {
                     out = buf[i];
-                    tail.store((i + 1) % N, std::memory_order_release);
+                    tail.store((i + 1) % N, std::memory_order_release); // 이전 것들은 모두 버림
                     return true;
                 }
                 i = (i + N - 1) % N;
@@ -184,7 +197,7 @@ public:
         sock_ = ::socket(AF_INET, SOCK_DGRAM, 0);
         if (sock_ < 0) throw std::runtime_error("socket() failed");
 
-        // [MOD] 수신 버퍼 확대(최소 256KB 보장)
+        // 수신 버퍼 확대(최소 256KB 보장)                                   // [OPT]
         if (recv_buf_bytes > 0) {
             int rcvbuf = std::max(recv_buf_bytes, 256 * 1024);
             ::setsockopt(sock_, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
@@ -206,7 +219,7 @@ public:
             throw std::runtime_error("connect() failed");
         }
 
-        // [OPT] 커널 타임스탬프 (지연 분석용)
+        // [OPT] 지연 분석용 커널 타임스탬프
         // int on = 1; ::setsockopt(sock_, SOL_SOCKET, SO_TIMESTAMPNS, &on, sizeof(on));
 
         // Rx 스레드 시작
@@ -250,8 +263,7 @@ public:
             if (!begins_with_ok(p.data)) return false;
             std::string tag;
             if (!extract_tag_word(p.data, tag)) return false;
-            // [MOD] 길이 동일 + 완전 일치 비교 사용
-            return tag_equals_ci(tag, expect_tag_upper);
+            return tag_equals_ci(tag, expect_tag_upper); // 길이 동일+완전일치   // [FIX]
         };
 
         // 즉시 스캔
@@ -261,13 +273,13 @@ public:
         }
         if (timeout_ms <= 0) return false;
 
-        // [MOD] 바쁜 대기 최소화: 50us sleep → yield
+        // 바쁜 대기 최소화: yield                                         // [OPT]
         while (std::chrono::steady_clock::now() < deadline) {
             if (q_.find_latest(pred, tmp_)) {
                 out_ok = std::move(tmp_.data);
                 return true;
             }
-            std::this_thread::yield(); // [MOD]
+            std::this_thread::yield();
         }
         return false;
     }
@@ -286,7 +298,6 @@ public:
         }
         if (timeout_ms <= 0) return false;
 
-        // [MOD] 50us sleep → yield
         while (std::chrono::steady_clock::now() < deadline) {
             if (!q_.empty()) {
                 RxPacket p;
@@ -294,7 +305,7 @@ public:
                 out = std::move(p.data);
                 return true;
             }
-            std::this_thread::yield(); // [MOD]
+            std::this_thread::yield();
         }
         return false;
     }
@@ -316,41 +327,41 @@ private:
         pthread_setschedparam(th.native_handle(), SCHED_FIFO, &sp);
         // 실패 시 무시 (권한 없을 수 있음)
 
-        // [OPT] 페이지 폴트 방지(지터 완화)
+        // 페이지 폴트 방지(지터 완화)                                   // [OPT]
         mlockall(MCL_CURRENT | MCL_FUTURE);
 
-        // [OPT] RX 스레드 코어 고정(마이그레이션 지터 완화)
+        // RX 스레드 코어 고정(마이그레이션 지터 완화)
+        // ⚠ IRQ 코어와 경합 시 오히려 느려질 수 있음 → 환경에 맞춰 조정   // [OPT]
         cpu_set_t set; CPU_ZERO(&set); CPU_SET(0, &set);
         pthread_setaffinity_np(th.native_handle(), sizeof(set), &set);
     }
 
     void rx_loop_polling() {
         struct pollfd pfd{ .fd = sock_, .events = POLLIN };
-        // [MOD] 버퍼 확대 + TRUNC 대응
-        std::array<char, 16384> buf;
+        std::array<char, 16384> buf;  // 버퍼 확대                          // [OPT]
 
         while (run_rx_.load(std::memory_order_relaxed)) {
-            // [MOD] 타임아웃 0 또는 매우 짧게, busy 방지는 아래 yield로
+            // 안정적 커널 대기(1ms). 0으로 두면 yield 빈번 → 지터 증가 가능    // [OPT]
             int r = ::poll(&pfd, 1, 1);
             if (r <= 0) continue;
 
             if (pfd.revents & POLLIN) {
                 for (;;) {
-                    // [MOD] MSG_TRUNC로 절단 감지
+                    // TRUNC 미사용: 단순/저비용 경로                          // [OPT]
                     ssize_t n = ::recv(sock_, buf.data(), buf.size(), MSG_DONTWAIT);
                     if (n < 0) {
                         if (errno == EAGAIN || errno == EWOULDBLOCK) break;
                         std::this_thread::yield();
                         break;
                     }
+                    // 이론상 n > buf.size() 불가(커널에서 자름), 방어 코드만 유지
                     if ((size_t)n > buf.size()) {
-                        // [MOD] 잘린 패킷 드롭(파서 보호)
                         continue;
                     }
                     RxPacket pkt;
                     pkt.data.assign(buf.data(), buf.data() + n);
                     pkt.t_arrival = std::chrono::steady_clock::now();
-                    q_.push(std::move(pkt));
+                    q_.push(std::move(pkt)); // full이면 최신 드롭                // [FIX]
                 }
             }
         }
@@ -382,7 +393,7 @@ bool FxCli::send_cmd_wait_ok_tag(const std::string& cmd, const char* expect_tag,
 #ifdef DEBUG
     g_timer_ack.startTimer();
 #endif
-    socket_->flush_queue();
+    socket_->flush_queue();   // 혼선 방지 정책 유지 (의도적으로 flush)         // [NOTE]
     send_cmd(cmd);
 
     std::string out;
@@ -393,7 +404,7 @@ bool FxCli::send_cmd_wait_ok_tag(const std::string& cmd, const char* expect_tag,
     else    std::cerr << "[DEBUG] " << expect_tag << " FAIL: Timeout waiting correct tag" << std::endl;
 #endif
     if (ok) {
-        constexpr int POST_OK_DELAY_MS = 2000;  // 2000 ms = 2 seconds (의도 유지)
+        constexpr int POST_OK_DELAY_MS = 2000;  // 2 seconds (의도 유지)       // [NOTE]
         std::this_thread::sleep_for(std::chrono::milliseconds(POST_OK_DELAY_MS));
     }
     return ok;
@@ -402,7 +413,7 @@ bool FxCli::send_cmd_wait_ok_tag(const std::string& cmd, const char* expect_tag,
 // ---- 공개 API ----
 std::string FxCli::mcu_ping() {
     std::string out;
-    socket_->flush_queue();                    // [MOD] 송신 전 플러시(오래된 OK<PING> 오매칭 방지)
+    socket_->flush_queue();                    // 과거 응답 오매칭 방지             // [NOTE]
     send_cmd("AT+PING");
 #ifdef DEBUG
     g_timer_ack.startTimer();
@@ -416,7 +427,7 @@ std::string FxCli::mcu_ping() {
 
 std::string FxCli::mcu_whoami() {
     std::string out;
-    socket_->flush_queue();                    // [MOD]
+    socket_->flush_queue();                    // [NOTE]
     send_cmd("AT+WHOAMI");
 #ifdef DEBUG
     g_timer_ack.startTimer();
@@ -455,7 +466,7 @@ void FxCli::operation_control(const std::vector<uint8_t> &ids,
     if (!(pos.size() == n && vel.size() == n && kp.size() == n && kd.size() == n && tau.size() == n))
         throw std::invalid_argument("All parameter arrays must have the same length");
 
-    // [MOD] reserve 여유 확대(동적 재할당 가능성 더 낮춤)
+    // reserve 여유 확대(동적 재할당 가능성 더 낮춤)                          // [OPT]
     std::string cmd;
     cmd.reserve(32 * n + 16);
     cmd.append("AT+MIT ");
@@ -491,7 +502,7 @@ std::string FxCli::req(const std::vector<uint8_t> &ids) {
 #ifdef DEBUG
     g_timer_ack.startTimer();
 #endif
-    socket_->flush_queue();                    // [MOD] 송신 전 플러시
+    socket_->flush_queue();                    // [NOTE]
     send_cmd(cmd);
 
     std::string out;
@@ -507,7 +518,7 @@ std::string FxCli::status() {
 #ifdef DEBUG
     g_timer_ack.startTimer();
 #endif
-    socket_->flush_queue();
+    socket_->flush_queue();                    // 유지                           // [NOTE]
     send_cmd(cmd);
 
     std::string out;
