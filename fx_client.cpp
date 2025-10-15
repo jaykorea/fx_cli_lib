@@ -428,22 +428,18 @@ std::string FxCli::mcu_whoami() {
 }
 
 bool FxCli::motor_start(const std::vector<uint8_t> &ids) {
-    socket_->flush_queue();                    // [MOD]
     const std::string cmd = "AT+START " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "START", timeout_ms_);
 }
 bool FxCli::motor_stop(const std::vector<uint8_t> &ids) {
-    socket_->flush_queue();                    // [MOD]
     const std::string cmd = "AT+STOP " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "STOP", timeout_ms_);
 }
 bool FxCli::motor_estop(const std::vector<uint8_t> &ids) {
-    socket_->flush_queue();                    // [MOD]
     const std::string cmd = "AT+ESTOP " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "ESTOP", timeout_ms_);
 }
 bool FxCli::motor_setzero(const std::vector<uint8_t> &ids) {
-    socket_->flush_queue();                    // [MOD]
     const std::string cmd = "AT+SETZERO " + build_id_group(ids);
     return send_cmd_wait_ok_tag(cmd, "SETZERO", timeout_ms_);
 }
@@ -510,7 +506,7 @@ std::string FxCli::status() {
 #ifdef DEBUG
     g_timer_ack.startTimer();
 #endif
-    socket_->flush_queue();                    // (원래 있던 플러시 유지)
+    socket_->flush_queue();
     send_cmd(cmd);
 
     std::string out;
