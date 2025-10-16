@@ -9,7 +9,7 @@ the text-based AT command protocol via the `fx_cli` module.
 """
 
 # Create a client; you can override the defaults by passing ip/port (port is int).
-cli = fx_cli.FxCli("192.168.10.10", 5101)
+cli = fx_cli.FxCli()
 
 # 1) 특정 ID 제어 예시
 ids_specific = [1, 3, 2, 4]

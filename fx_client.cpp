@@ -36,37 +36,12 @@
 #include <strings.h>
 #include <fcntl.h>
 #include <sched.h>
-#include <sys/mman.h>
 
 #ifdef DEBUG
 static ElapsedTimerRT g_timer_ack_buf("chk_ACK_buf");
 static ElapsedTimerRT g_timer_ack_rt("chk_ACK_rt");
 static ElapsedTimerRT g_timer_ack_n("chk_ACK_n");
 #endif
-
-
-static void set_thread_rt_and_affinity(int fifo_prio, int cpu_index) {
-    pthread_t tid = pthread_self();
-
-    // 1) 실시간 스케줄
-    sched_param sp{}; sp.sched_priority = fifo_prio;   // 1~99
-    if (pthread_setschedparam(tid, SCHED_FIFO, &sp) != 0) {
-        perror("[WARN] pthread_setschedparam");
-    }
-
-    // 2) 코어 고정
-    if (cpu_index >= 0) {
-        cpu_set_t cs; CPU_ZERO(&cs); CPU_SET(cpu_index, &cs);
-        if (pthread_setaffinity_np(tid, sizeof(cs), &cs) != 0) {
-            perror("[WARN] pthread_setaffinity_np");
-        }
-    }
-
-    // 3) 페이지 폴트 방지
-    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
-        perror("[WARN] mlockall");
-    }
-}
 
 
 // ──────────────── 내부 유틸 ────────────────
@@ -176,7 +151,8 @@ struct LatestBufferRT {
                 return false; // timeout
             }
             // 너무 바쁘지 않게 살짝 양보 (sleep_for(30~50us)도 가능)
-            std::this_thread::yield();
+            //std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::microseconds(5));
         }
     }
 
@@ -362,7 +338,7 @@ private:
     struct sockaddr_in addr_{};
     std::atomic<bool> run_rx_{false};
     std::thread rx_thread_;
-    LatestBuffer q_;  // ✅ 항상 최신 데이터만 유지
+    LatestBufferRT q_;  // ✅ 항상 최신 데이터만 유지
 
     // 태그별 SEQ 추적용 (예: "REQ", "STATUS", "MIT" 등)
     std::unordered_map<std::string, uint64_t> seq_map_;
@@ -370,7 +346,7 @@ private:
 
     void rx_thread_entry() {
         // prio, cpu_index는 환경 맞춰 조정
-        set_thread_rt_and_affinity(/*fifo_prio=*/85, /*cpu_index=*/2);
+        set_thread_rt_and_affinity(/*fifo_prio=*/85, /*cpu_index=*/4);
         rx_loop_polling();
     }
 
@@ -497,7 +473,6 @@ bool FxCli::operation_control(const std::vector<uint8_t> &ids,
         cmd.append(format_float(fb, sizeof(fb), tau[i])); cmd.push_back('>');
         if (i + 1 < n) cmd.push_back(' ');
     }
-    // RT 경로: flush 금지. MIT 응답을 MCU가 보낸다면 아래 대기 유지
     send_cmd(cmd);
     std::string out;
     // bool ok = socket_->wait_for_ok_tag("MIT", out, timeout_ms_rt_);
@@ -509,7 +484,6 @@ std::string FxCli::req(const std::vector<uint8_t> &ids) {
     g_timer_ack_rt.startTimer();
 #endif
     std::string out;
-    // RT 경로: flush 금지
     send_cmd("AT+REQ " + build_id_group(ids));
     bool ok = socket_->wait_for_ok_tag("REQ", out, timeout_ms_rt_);
 #ifdef DEBUG
@@ -524,7 +498,6 @@ std::string FxCli::status() {
     g_timer_ack_rt.startTimer();
 #endif
     std::string out;
-    // RT 경로: flush 금지
     send_cmd("AT+STATUS");
     bool ok = socket_->wait_for_ok_tag("STATUS", out, timeout_ms_rt_);
 #ifdef DEBUG

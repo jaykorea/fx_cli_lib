@@ -258,9 +258,24 @@ PYBIND11_MODULE(fx_cli, m) {
     m.doc() = "High level FX motor controller client using UDP AT commands";
 
     py::class_<FxCli>(m, "FxCli")
-        .def(py::init<const std::string&, uint16_t>(),
-             py::arg("ip"),
-             py::arg("port"))
+        .def(py::init([](const std::optional<std::string> &ip_opt,
+                        const std::optional<uint16_t> &port_opt) {
+            // 기본값 지정
+            std::string ip = ip_opt.value_or("192.168.10.10");
+            uint16_t port = port_opt.value_or(5101);
+
+            auto* cli = new FxCli(ip, port);
+            try {
+                set_thread_rt_and_affinity(80, 5);
+                std::cerr << "[RT] FxCli main thread set to SCHED_FIFO(80) on CPU 1\n";
+            } catch (...) {
+                std::cerr << "[WARN] Failed to apply RT scheduling (non-root or no CAP_SYS_NICE)\n";
+            }
+            return cli;
+        }),
+        py::arg("ip") = std::nullopt,     // 선택적 인자
+        py::arg("port") = std::nullopt)   // 선택적 인자
+
         .def("mcu_ping", [](FxCli &self) {
             std::string resp = self.mcu_ping();
             return parse_response_string(resp); // dict

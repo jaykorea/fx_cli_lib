@@ -12,7 +12,7 @@
 int main() {
     try {
         // Create client (target MCU IP and port)
-        FxCli cli("192.168.10.10", 5101);
+        FxCli cli();
 
         // Define motor IDs
         std::vector<uint8_t> ids_specific = {1, 2};

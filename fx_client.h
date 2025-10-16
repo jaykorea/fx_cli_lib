@@ -3,6 +3,30 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <sys/mman.h>
+
+static void set_thread_rt_and_affinity(int fifo_prio, int cpu_index) {
+    pthread_t tid = pthread_self();
+
+    // 1) 실시간 스케줄
+    sched_param sp{}; sp.sched_priority = fifo_prio;   // 1~99
+    if (pthread_setschedparam(tid, SCHED_FIFO, &sp) != 0) {
+        perror("[WARN] pthread_setschedparam");
+    }
+
+    // 2) 코어 고정
+    if (cpu_index >= 0) {
+        cpu_set_t cs; CPU_ZERO(&cs); CPU_SET(cpu_index, &cs);
+        if (pthread_setaffinity_np(tid, sizeof(cs), &cs) != 0) {
+            perror("[WARN] pthread_setaffinity_np");
+        }
+    }
+
+    // 3) 페이지 폴트 방지
+    if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+        perror("[WARN] mlockall");
+    }
+}
 
 /**
  * @brief Linux-only UDP client for the Fx protocol.
@@ -29,7 +53,7 @@ public:
    * @param ip   Target IPv4 address (e.g., "192.168.10.2")
    * @param port Target UDP port number
    */
-  FxCli(const std::string& ip, uint16_t port);
+  FxCli(const std::string& ip = "192.168.10.10", uint16_t port = 5101);
 
   FxCli(const FxCli&) = delete;
   FxCli& operator=(const FxCli&) = delete;
