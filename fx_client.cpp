@@ -1,10 +1,4 @@
-// fx_client.cpp — LatestBuffer 기반 실시간 UDP 클라이언트 (Stabilized)
-// - 항상 최신 패킷 1개만 유지 (덮어쓰기 방식)
-// - Condition Variable 기반 대기 (busy-wait 제거)
-// - Robust send/recv/timeout 처리
-// - Real-time safe (poll + MSG_DONTWAIT)
-// - RT: REQ/STATUS 경로에서 flush 제거, (필요시) MIT OK 대기
-// - Non-RT: send_cmd_wait_ok_tag() 내 1s sleep 유지 (안정화용)
+// fx_client.cpp
 
 #ifdef DEBUG
 #define FXCLI_LOG(x) do { std::cerr << x << std::endl; } while(0)
@@ -135,9 +129,6 @@ static inline const char* format_float(char* buf, size_t bufsz, float v) {
 
 // ─────────────────────────────────────────────
 // ✅ LatestBufferRT — 항상 최신 1개만 유지 (Lock-free / No CV/Mutex)
-//    - 단일 생산자(rx_thread_) / 단일 소비자(wait_for_ok_tag 스레드) 가정
-//    - 덮어쓰기 방식으로 "항상 최신" 보장
-//    - 네가 쓰던 [RTTimer|chk_ACK_buf] 로그를 pop 경로에 그대로 유지
 // ─────────────────────────────────────────────
 struct LatestBufferRT {
     std::atomic<uint64_t> wseq{0};  // producer가 쓴 횟수
@@ -174,10 +165,6 @@ struct LatestBufferRT {
                 // 최신 1개만 전달
                 out = std::move(latest);
                 rseq.store(cur_w, std::memory_order_release);
-#ifdef DEBUG
-                g_timer_ack_buf.stopTimer();
-                g_timer_ack_buf.printLatest();  // [RTTimer|chk_ACK_buf] X.XXX ms
-#endif
                 return true;
             }
             if (std::chrono::steady_clock::now() >= deadline) {
@@ -392,68 +379,35 @@ private:
         std::array<char, 65536> buf;
 
         using clock = std::chrono::steady_clock;
-        auto t_last_poll = clock::now();
-        auto t_last_recv = clock::now();
+
+        // 바깥(전체 시스템) 5ms 예산 중 RX는 2~3ms만 사용 (예: 3ms)
+        const auto RX_BUDGET = std::chrono::milliseconds(3);
 
         while (run_rx_.load(std::memory_order_relaxed)) {
-            auto t_poll_start = clock::now();
-            int r = ::poll(&pfd, 1, 1);   // 1ms 단위로 이벤트 대기
-            auto t_poll_end = clock::now();
+            // 1) poll로 이벤트 감시 (1ms 정도; 필요시 남은 전체 예산으로 조정)
+            int r = ::poll(&pfd, 1, /*timeout_ms=*/1);
+            if (r <= 0) continue;
+            if (!(pfd.revents & POLLIN)) continue;
 
-            double poll_dur = std::chrono::duration<double, std::milli>(t_poll_end - t_poll_start).count();
-            double poll_interval = std::chrono::duration<double, std::milli>(t_poll_end - t_last_poll).count();
-            t_last_poll = t_poll_end;
+            // 2) drain 은 반드시 비-블로킹으로, 그리고 시간 제한!
+            const auto drain_deadline = clock::now() + RX_BUDGET;
+            for (;;) {
+                if (clock::now() >= drain_deadline) break; // 예산 소진 → 즉시 탈출
 
-    #ifdef DEBUG
-            // FXCLI_LOG("[RX|poll_wait] Δ=" << std::fixed << std::setprecision(3)
-            //         << poll_interval << " ms (poll_dur=" << poll_dur << ")");
-    #endif
-
-            if (r <= 0)
-                continue;  // timeout → 다음 poll 주기로
-
-            if (pfd.revents & POLLIN) {
-                for (;;) {
-                    auto t_recv_start = clock::now();
-                    ssize_t n = ::recv(sock_, buf.data(), buf.size(), 0);  // blocking+timeout(3ms)
-                    auto t_recv_end = clock::now();
-
-                    if (n < 0) {
-                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                            // recv timeout (3ms 이내 데이터 없음)
-                            break;
-                        } else {
-                            perror("[WARN] recv()");
-                            break;
-                        }
-                    } else if (n == 0) {
-                        // 연결 종료 (UDP에선 거의 없음)
-                        break;
-                    }
-
-                    double recv_dur = std::chrono::duration<double, std::micro>(t_recv_end - t_recv_start).count();
-                    double recv_interval = std::chrono::duration<double, std::milli>(t_recv_end - t_last_recv).count();
-                    t_last_recv = t_recv_end;
-
-    #ifdef DEBUG
-                    // FXCLI_LOG("[RX|recv_pkt] Δ=" << std::fixed << std::setprecision(3)
-                    //         << recv_interval << " ms, n=" << n
-                    //         << " bytes (recv_dur=" << recv_dur << " µs)");
-    #endif
-
-                    auto t_push_start = clock::now();
-                    std::string pkt(buf.data(), buf.data() + n);
-                    q_.push(std::move(pkt));  // 최신 데이터로 교체
-                    auto t_push_end = clock::now();
-
-                    double push_dur = std::chrono::duration<double, std::micro>(t_push_end - t_push_start).count();
-    #ifdef DEBUG
-                    // FXCLI_LOG("[RX|push_done] Δ=" << push_dur << " µs");
-    #endif
+                // 비-블로킹 수신: 절대 기다리지 않음
+                ssize_t n = ::recv(sock_, buf.data(), buf.size(), MSG_DONTWAIT);
+                if (n < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) break; // 현재 큐 비었음
+                    perror("[WARN] recv"); break;
                 }
+                if (n == 0) break; // UDP에선 거의 없음
+
+                std::string pkt(buf.data(), buf.data() + n);
+                q_.push(std::move(pkt)); // 최신으로 덮어쓰기
             }
         }
     }
+
 };
 
 // ──────────────── FxCli ────────────────
