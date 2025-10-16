@@ -68,6 +68,7 @@ install(FILES
 install(FILES
   fx_client.h
   utils/elapsed_timer.h
+  utils/elapsed_timer_rt.h
   DESTINATION include/fx_cli
 )
 

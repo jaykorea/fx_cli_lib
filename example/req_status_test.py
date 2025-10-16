@@ -12,14 +12,14 @@ the text-based AT command protocol via the `fx_cli` module.
 cli = fx_cli.FxCli("192.168.10.10", 5101)
 
 # 1) 특정 ID 제어 예시
-ids_specific = [1, 2, 3, 4]
+ids_specific = [1, 3, 2, 4]
 
 try:
     # START (ACK: OK <START ...>)
-    if not cli.motor_start(ids_specific):
-        print("Motor start failed")
-    else:
-        print("Motor start succeeded")
+    # if not cli.motor_start(ids_specific):
+    #     print("Motor start failed")
+    # else:
+    #     print("Motor start succeeded")
 
     # Operation Control
     mit_groups = [
@@ -29,35 +29,17 @@ try:
         {"id": ids_specific[3], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.01, "tau": 0.0},
     ]
 
-    T = 3600
+    T = 5
     dt = 0.02
     steps = int(T / dt)
 
-    # Get Obs
+    # Get Status
+    start = time.time()
     for i in range(steps):
-        # 연산 시작 시간 기록 (단위: 초)
-        t0 = time.perf_counter()
-
-        # 실제 작업 수행
-        bool_state = cli.operation_control(mit_groups)
-        print(f"Step {i}: {bool_state}")
-        state = cli.req(ids_specific)
-        print(f"Step {i}: {state}")
-
-        # 연산 종료 시간 기록 (단위: 초)
-        t1 = time.perf_counter()
-
-        # 경과 시간을 초(second)에서 밀리초(millisecond)로 변환
-        step_ms = (t1 - t0) * 1000
-
-        # 10ms를 초과했는지 확인하고, 초과 시 RuntimeError 발생
-        if step_ms > 10:
-            raise RuntimeError(f"오류: Step {i}번이 너무 오래 걸렸습니다. 소요 시간: {step_ms:.3f} ms (제한: 10 ms)")
-
-        print(f"Step {i} 소요 시간: {step_ms:.3f} ms")
-
-        # 다음 루프 전 잠시 대기
+        status = cli.status()
+        print(status)
         time.sleep(dt)
+    end = time.time()
 
     # Motor Stop
     if not cli.motor_stop(ids_specific):

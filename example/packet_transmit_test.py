@@ -89,3 +89,10 @@ try:
 
 except Exception as e:
     print("Error during specific-ID flow:", e)
+
+finally:
+    # Motor Stop
+    if not cli.motor_stop(ids_specific):
+        print("Motor stop failed")
+    else:
+        print("Motor stop succeeded")
