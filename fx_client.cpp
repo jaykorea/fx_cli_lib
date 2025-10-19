@@ -312,80 +312,6 @@ public:
         if (rx_thread_.joinable()) rx_thread_.join();
     }
 
-    void send(const char *data, size_t len) {
-        int fd;
-        {   
-            // ✅ 소켓 접근 보호용 락 (짧게 감싸서 성능 영향 최소화)
-            std::lock_guard<std::mutex> lk(sock_mtx_);
-            fd = sock_;
-        }
-        if (fd < 0)
-            throw std::runtime_error("send() failed: invalid socket descriptor");
-        ssize_t n = ::send(sock_, data, (int)len, 0);
-        if (n < 0) throw std::runtime_error(std::string("send() failed: ") + strerror(errno));
-        if ((size_t)n != len) throw std::runtime_error("partial send()");
-    }
-
-    void flush_queue() { q_.clear(); }
-
-    // 태그 미스매치가 들어올 수 있으므로, 남은 시간 동안 재시도
-    bool wait_for_ok_tag(const char* expect_tag_upper, std::string& out_ok, int timeout_ms) {
-        using clock = std::chrono::steady_clock;
-        auto deadline = clock::now() + std::chrono::milliseconds(timeout_ms);
-
-        for (;;) {
-            int remain = (int)std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - clock::now()).count();
-            if (remain <= 0) return false;
-
-            std::string data;
-            if (!q_.pop_latest(data, remain)) return false; // timeout
-
-            // #ifdef DEBUG
-            // FXCLI_LOG("[RX] " << data);
-            // #endif
-
-            if (!begins_with_ok(data)) continue;
-
-            std::string tag;
-            if (!extract_tag_word(data, tag)) continue;
-            if (!tag_equals_ci(tag, expect_tag_upper)) {
-                // 다른 태그면 스킵하고 남은 시간 내 재시도
-                continue;
-            }
-
-            // ── SEQ 연속성 검증: 모든 태그 공통 적용 ─────────────────────────
-            // 응답 문자열에 SEQ_NUM 필드가 있는 경우에만 동작 (없으면 스킵)
-            uint64_t seq{};
-            if (parse_seq_num(data, seq)) {
-                std::lock_guard<std::mutex> lock(seq_mtx_);
-                uint64_t& prev = seq_map_[expect_tag_upper]; // 태그별로 저장
-                if (prev != 0 && seq != prev + 1) {
-                    FXCLI_LOG(std::string("[DROP?] ") + expect_tag_upper +
-                              " SEQ jump: prev=" + std::to_string(prev) +
-                              " curr=" + std::to_string(seq));
-                }
-                prev = seq;
-            }
-            // ────────────────────────────────────────────────────────────────
-
-            out_ok = std::move(data);
-            return true;
-        }
-    }
-
-private:
-    int sock_{-1};
-    std::mutex sock_mtx_; 
-    struct sockaddr_in addr_{};
-    std::atomic<bool> run_rx_{false};
-    std::thread rx_thread_;
-    LatestBufferRT q_;  // ✅ 항상 최신 데이터만 유지
-
-    // 태그별 SEQ 추적용 (예: "REQ", "STATUS", "MIT" 등)
-    std::unordered_map<std::string, uint64_t> seq_map_;
-    std::mutex seq_mtx_;
-
     void create_socket_or_throw() {
         std::lock_guard<std::mutex> lk(sock_mtx_);
         // 기존 소켓이 살아 있으면 닫기
@@ -433,6 +359,79 @@ private:
 
         FXCLI_LOG("[UdpSocket] new socket created (fd=" << sock_ << ")");
     }
+
+    void send(const char *data, size_t len) {
+        int fd;
+        {
+            std::lock_guard<std::mutex> lk(sock_mtx_);
+            fd = sock_;
+        }
+
+        if (fd < 0)
+            throw std::runtime_error("send() failed: invalid socket descriptor");
+
+        ssize_t n = ::send(fd, data, (int)len, 0);
+        if (n < 0)
+            throw std::runtime_error(std::string("send() failed: ") + strerror(errno));
+        if ((size_t)n != len)
+            throw std::runtime_error("partial send()");
+    }
+
+    void flush_queue() { q_.clear(); }
+
+    // 태그 미스매치가 들어올 수 있으므로, 남은 시간 동안 재시도
+    bool wait_for_ok_tag(const char* expect_tag_upper, std::string& out_ok, int timeout_ms) {
+        using clock = std::chrono::steady_clock;
+        auto deadline = clock::now() + std::chrono::milliseconds(timeout_ms);
+
+        for (;;) {
+            int remain = (int)std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - clock::now()).count();
+            if (remain <= 0) return false;
+
+            std::string data;
+            if (!q_.pop_latest(data, remain)) return false; // timeout
+
+            if (!begins_with_ok(data)) continue;
+
+            std::string tag;
+            if (!extract_tag_word(data, tag)) continue;
+            if (!tag_equals_ci(tag, expect_tag_upper)) {
+                // 다른 태그면 스킵하고 남은 시간 내 재시도
+                continue;
+            }
+
+            // ── SEQ 연속성 검증: 모든 태그 공통 적용 ─────────────────────────
+            // 응답 문자열에 SEQ_NUM 필드가 있는 경우에만 동작 (없으면 스킵)
+            uint64_t seq{};
+            if (parse_seq_num(data, seq)) {
+                std::lock_guard<std::mutex> lock(seq_mtx_);
+                uint64_t& prev = seq_map_[expect_tag_upper]; // 태그별로 저장
+                if (prev != 0 && seq != prev + 1) {
+                    FXCLI_LOG(std::string("[DROP?] ") + expect_tag_upper +
+                              " SEQ jump: prev=" + std::to_string(prev) +
+                              " curr=" + std::to_string(seq));
+                }
+                prev = seq;
+            }
+            // ────────────────────────────────────────────────────────────────
+
+            out_ok = std::move(data);
+            return true;
+        }
+    }
+
+private:
+    int sock_{-1};
+    std::mutex sock_mtx_; 
+    struct sockaddr_in addr_{};
+    std::atomic<bool> run_rx_{false};
+    std::thread rx_thread_;
+    LatestBufferRT q_;  // ✅ 항상 최신 데이터만 유지
+
+    // 태그별 SEQ 추적용 (예: "REQ", "STATUS", "MIT" 등)
+    std::unordered_map<std::string, uint64_t> seq_map_;
+    std::mutex seq_mtx_;
 
     void rx_thread_entry() {
         // prio, cpu_index는 환경 맞춰 조정
@@ -533,11 +532,31 @@ FxCli::~FxCli() {
 }
 
 void FxCli::send_cmd(const std::string &cmd) {
-    if (!socket_) throw std::runtime_error("socket not initialized");
-    socket_->send(cmd.c_str(), cmd.size());
+    if (!socket_)
+        throw std::runtime_error("socket not initialized");
+
+    try {
+        // ✅ 내부 UDP 송신 (스냅샷 fd 사용)
+        socket_->send(cmd.c_str(), cmd.size());
+
 #ifdef DEBUG
-    FXCLI_LOG("[SEND] " << cmd);
+        FXCLI_LOG("[SEND] " << cmd);
 #endif
+    }
+    catch (const std::exception &e) {
+        // 소켓 에러 시 디버그용 경고 출력
+        std::cerr << "[FxCli::send_cmd] send() failed: " << e.what() << std::endl;
+
+        // 소켓이 깨졌을 수 있으므로 재생성 시도
+        try {
+            std::cerr << "[FxCli::send_cmd] Attempting socket recreate...\n";
+            socket_->create_socket_or_throw();
+            std::cerr << "[FxCli::send_cmd] Socket recreated successfully.\n";
+        } catch (const std::exception &ex) {
+            std::cerr << "[FxCli::send_cmd] Socket recreation failed: "
+                      << ex.what() << std::endl;
+        }
+    }
 }
 
 // 비실시간 명령 전용: flush + 1s 안정화 sleep 유지
