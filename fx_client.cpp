@@ -135,10 +135,6 @@ bool pop_latest(std::string& out, int timeout_ms) noexcept {
     std::unique_lock<std::mutex> lk(cv_mtx);
 
     if (wseq != rseq) {
-        if (clock::now() >= deadline) {
-            ::sched_yield(); // 타임아웃 후 양보 시도
-            return false;
-        }
         out = latest;
         rseq = wseq;
         return true;
@@ -149,10 +145,6 @@ bool pop_latest(std::string& out, int timeout_ms) noexcept {
         return false;
     }
 
-    if (clock::now() >= deadline) {
-        ::sched_yield(); // 타임아웃 후 양보 시도
-        return false;
-    }
     out = latest;
     rseq = wseq;
     return true;
@@ -376,58 +368,44 @@ public:
     bool wait_for_ok_tag(const char* expect_tag_upper, std::string& out_ok, int timeout_ms) {
         using clock = std::chrono::steady_clock;
         auto* q = q_.select(expect_tag_upper);
-        const auto deadline = clock::now() + std::chrono::milliseconds(timeout_ms);
 
         #ifdef DEBUG
         ElapsedTimerRT* t = timer_for_expect(expect_tag_upper);
         if (t) t->startTimer();
         #endif
 
-        for (;;) {
-            int remain = (int)std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - clock::now()).count();
-            if (remain <= 0) {
-                #ifdef DEBUG
-                FXCLI_LOG("[wait_for_ok_tag] Total timeout, yielding");
-                if (t) { t->stopTimer(); t->printLatest(); }
-                #endif
-                ::sched_yield(); // Yield to allow rx_thread to push data
-                return false;
-            }
-
-            std::string data;
-            if (!q->pop_latest(data, remain)) {
-                #ifdef DEBUG
-                FXCLI_LOG("[wait_for_ok_tag] pop_latest timeout, yielding");
-                if (t) { t->stopTimer(); t->printLatest(); }
-                #endif
-                ::sched_yield(); // Yield to allow rx_thread to push data
-                return false;
-            }
-
-            if (!begins_with_ok(data)) continue;
-            std::string tag;
-            if (!extract_tag_word(data, tag)) continue;
-            if (!tag_equals_ci(tag, expect_tag_upper)) continue;
-
-            uint64_t seq{};
-            if (parse_seq_num(data, seq)) {
-                std::lock_guard<std::mutex> lock(seq_mtx_);
-                uint64_t& prev = seq_map_[expect_tag_upper];
-                if (prev != 0 && seq != prev + 1) {
-                    FXCLI_LOG(std::string("[DROP?] ") + expect_tag_upper +
-                            " SEQ jump: prev=" + std::to_string(prev) +
-                            " curr=" + std::to_string(seq));
-                }
-                prev = seq;
-            }
-
+        std::string data;
+        if (!q->pop_latest(data, timeout_ms)) {
             #ifdef DEBUG
+            FXCLI_LOG("[wait_for_ok_tag] pop_latest timeout, yielding");
             if (t) { t->stopTimer(); t->printLatest(); }
             #endif
-            out_ok = std::move(data);
-            return true;
+            ::sched_yield(); // Yield to allow rx_thread to push data
+            return false;
         }
+        if (!begins_with_ok(data)) return false;
+
+        std::string tag;
+        if (!extract_tag_word(data, tag)) return false;
+        if (!tag_equals_ci(tag, expect_tag_upper)) return false;
+
+        uint64_t seq{};
+        if (parse_seq_num(data, seq)) {
+            std::lock_guard<std::mutex> lock(seq_mtx_);
+            uint64_t& prev = seq_map_[std::string(expect_tag_upper)];
+            if (prev != 0 && seq != prev + 1) {
+                FXCLI_LOG(std::string("[DROP?] ") + expect_tag_upper +
+                        " SEQ jump: prev=" + std::to_string(prev) +
+                        " curr=" + std::to_string(seq));
+            }
+            prev = seq;
+        }
+
+        #ifdef DEBUG
+        if (t) { t->stopTimer(); t->printLatest(); }
+        #endif
+        out_ok = std::move(data);
+        return true;
     }
 
 private:
