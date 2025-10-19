@@ -190,18 +190,16 @@ struct AckQueues { // [CHANGED]
     LatestBufferRT req;
     LatestBufferRT status;
     LatestBufferRT ping, whoami, start_, stop_, estop_, setzero;
-    LatestBufferRT other; // 태그 파싱 실패/미지원 태그
 
     void clear_all() { // [CHANGED]
         mit.clear(); req.clear(); status.clear();
         ping.clear(); whoami.clear();
         start_.clear(); stop_.clear(); estop_.clear(); setzero.clear();
-        other.clear();
     }
 
     // [CHANGED] 태그 문자열로 해당 큐 선택
     LatestBufferRT* select(const char* tag_upper) noexcept {
-        if (!tag_upper) return &other;
+        if (!tag_upper) return nullptr;
         // strcmp는 <cstring> 필요 (이미 포함되어 있음)
         if (std::strcmp(tag_upper,"MIT")     == 0) return &mit;
         if (std::strcmp(tag_upper,"REQ")     == 0) return &req;
@@ -212,19 +210,22 @@ struct AckQueues { // [CHANGED]
         if (std::strcmp(tag_upper,"STOP")    == 0) return &stop_;
         if (std::strcmp(tag_upper,"ESTOP")   == 0) return &estop_;
         if (std::strcmp(tag_upper,"SETZERO") == 0) return &setzero;
-        return &other;
+        return nullptr;
     }
 
     // [CHANGED] 단일 태그만 비우기 (내부 select 사용)
-    void clear_tag(const char* tag_upper) {
-        select(tag_upper)->clear();
+    bool clear_tag(const char* tag_upper) noexcept {
+        if (auto* q = select(tag_upper)) { q->clear(); return true; }
+        std::cerr << "[AckQueues] clear_tag: unknown tag: "
+                << (tag_upper ? tag_upper : "(null)") << "\n";
+        return false;
     }
 
     // [CHANGED] 패킷 내용으로 큐 선택
     LatestBufferRT* select_by_packet(const std::string& pkt) noexcept {
-        if (!begins_with_ok(pkt)) return &other;
+        if (!begins_with_ok(pkt)) return nullptr;
         std::string tag;
-        if (!extract_tag_word(pkt, tag)) return &other;
+        if (!extract_tag_word(pkt, tag)) return nullptr;
 
         if (tag_equals_ci(tag, "MIT"))     return &mit;
         if (tag_equals_ci(tag, "REQ"))     return &req;
@@ -235,7 +236,7 @@ struct AckQueues { // [CHANGED]
         if (tag_equals_ci(tag, "STOP"))    return &stop_;
         if (tag_equals_ci(tag, "ESTOP"))   return &estop_;
         if (tag_equals_ci(tag, "SETZERO")) return &setzero;
-        return &other;
+        return nullptr;
     }
 };
 
@@ -368,6 +369,9 @@ public:
     bool wait_for_ok_tag(const char* expect_tag_upper, std::string& out_ok, int timeout_ms) {
         using clock = std::chrono::steady_clock;
         auto* q = q_.select(expect_tag_upper);
+        if (!q) {
+            return false;
+        }
 
         #ifdef DEBUG
         ElapsedTimerRT* t = timer_for_expect(expect_tag_upper);
@@ -533,8 +537,12 @@ private:
                 std::string pkt(buf.data(), buf.data() + n);
 
                 // [CHANGED] 수신 즉시 태그 파싱 → 해당 태그 큐로 라우팅
-                auto* qdst = q_.select_by_packet(pkt);       // [CHANGED]
-                qdst->push(std::move(pkt));                   // [CHANGED]
+                if (auto* qdst = q_.select_by_packet(pkt)) {
+                    qdst->push(std::move(pkt));
+                } else {
+                    std::cerr << "[RX] drop unknown/invalid packet: " << pkt << "\n";
+                    continue;
+                }
             }
         }
     }
