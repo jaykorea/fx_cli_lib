@@ -3,8 +3,12 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cstdio>     // [CHANGED] perror
+#include <pthread.h>  // [CHANGED] pthread_* APIs
+#include <sched.h>    // [CHANGED] SCHED_FIFO, sched_param
 #include <sys/mman.h>
 
+// RT 스레드/코어 고정/페이지 폴트 방지 유틸
 static void set_thread_rt_and_affinity(int fifo_prio, int cpu_index) {
     pthread_t tid = pthread_self();
 
@@ -32,25 +36,31 @@ static void set_thread_rt_and_affinity(int fifo_prio, int cpu_index) {
  * @brief Linux-only UDP client for the Fx protocol.
  *
  * The FxCli class encapsulates a UDP socket client designed for low-latency,
- * real-time communication with MCU-based motor controllers. Internally it
- * operates a dedicated background thread that continuously receives UDP packets
- * and stores only the most recent frame in a lock-free buffer (LatestBuffer).
+ * real-time communication with MCU-based motor controllers.
+ *
+ * [CHANGED] Internally it runs a dedicated RX thread that receives UDP packets
+ * and performs *tag-based demultiplexing* into per-tag, single-slot, CV-protected
+ * buffers (e.g., MIT / REQ / STATUS / ...). Each tag holds only the *latest*
+ * frame, eliminating backlog and *preventing cross-tag overwrite* issues.
  *
  * All command/response APIs follow the pattern:
- *   1. Flush old packets.
+ *   1. (Non-RT only) Flush previously received packets (per-tag buffers).
  *   2. Send a command string (e.g., "AT+REQ <1 2>").
- *   3. Wait for an OK<TAG> response within a defined timeout.
+ *   3. Wait once for an OK<TAG> response within a defined timeout *from the
+ *      corresponding tag buffer only*.
  *
- * Time-critical commands (REQ, STATUS) use a shorter timeout (≈5 ms),
- * while normal control or configuration commands use longer windows.
+ * Time-critical commands (e.g., REQ, STATUS) use a shorter timeout (≈5 ms),
+ * while normal commands use a longer window.
  *
- * This design guarantees deterministic latency and eliminates packet backlog.
+ * [CHANGED] This design keeps deterministic latency while avoiding “ACK
+ * double-check” and “MIT/REQ cross-consumption” that could happen when sharing
+ * a single latest buffer across tags.
  */
 class FxCli {
 public:
   /**
    * @brief Construct a UDP client and start the RX thread.
-   * @param ip   Target IPv4 address (e.g., "192.168.10.2")
+   * @param ip   Target IPv4 address (e.g., "192.168.10.10")
    * @param port Target UDP port number
    */
   FxCli(const std::string& ip = "192.168.10.10", uint16_t port = 5101);
@@ -102,7 +112,8 @@ public:
   /// @brief Request status report ("AT+STATUS")
   std::string status();
 
-  /// @brief Immediately discard all received packets.
+  /// @brief Immediately discard all received packets. 
+  /// [CHANGED] Clears *all per-tag* buffers (MIT/REQ/STATUS/...).
   void flush();
 
 private:
@@ -124,9 +135,8 @@ private:
   /**
    * @brief Issue a command and wait for a matching OK<TAG> response.
    *
-   * The transmit queue is flushed before the command is sent to avoid
-   * matching stale responses. The method delegates the blocking wait
-   * to UdpSocket::wait_for_ok_tag().
+   * [CHANGED] The method flushes per-tag buffers (Non-RT flows), sends the command,
+   * then waits *once* on the tag-specific buffer only—no internal retry loop.
    *
    * @param cmd          Full AT command string
    * @param expect_tag   Expected OK<TAG> literal (e.g., "REQ")
@@ -141,7 +151,7 @@ private:
   // Timeout configurations
   // ────────────────────────────────
   int timeout_ms_    = 200;  ///< General command timeout (ms)
-  int timeout_ms_rt_ = 5;    ///< Real-time command timeout (ms)
+  int timeout_ms_rt_ = 2;    ///< Real-time command timeout (ms)
 
   // ────────────────────────────────
   // Internal UDP socket handler

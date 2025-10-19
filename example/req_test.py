@@ -51,8 +51,8 @@ try:
         step_ms = (t1 - t0) * 1000
 
         # 10ms를 초과했는지 확인하고, 초과 시 RuntimeError 발생
-        if step_ms > 10:
-            raise RuntimeError(f"오류: Step {i}번이 너무 오래 걸렸습니다. 소요 시간: {step_ms:.3f} ms (제한: 10 ms)")
+        if step_ms > 7:
+            raise RuntimeError(f"오류: Step {i}번이 너무 오래 걸렸습니다. 소요 시간: {step_ms:.3f} ms (제한: 7 ms)")
 
         print(f"Step {i} 소요 시간: {step_ms:.3f} ms")
 

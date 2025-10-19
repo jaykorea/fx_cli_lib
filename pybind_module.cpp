@@ -266,10 +266,11 @@ PYBIND11_MODULE(fx_cli, m) {
 
             auto* cli = new FxCli(ip, port);
             try {
-                set_thread_rt_and_affinity(80, 5);
-                std::cerr << "[RT] FxCli main thread set to SCHED_FIFO(80) on CPU 1\n";
+                //set_thread_rt_and_affinity(80, 5);
+                // std::cerr << "[RT] FxCli main thread set to SCHED_FIFO(80) on CPU 1\r\n";
+                std::cerr << "[PB] Init...\r\n";
             } catch (...) {
-                std::cerr << "[WARN] Failed to apply RT scheduling (non-root or no CAP_SYS_NICE)\n";
+                std::cerr << "[WARN] Failed to apply RT scheduling (non-root or no CAP_SYS_NICE)\r\n";
             }
             return cli;
         }),
