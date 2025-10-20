@@ -26,7 +26,7 @@ bool motor_setzero(const std::vector<uint8_t>& ids);
 
 ### MIT 제어
 ```cpp
-void operation_control(const std::vector<uint8_t>& ids,
+bool operation_control(const std::vector<uint8_t>& ids,
                        const std::vector<float>& pos,
                        const std::vector<float>& vel,
                        const std::vector<float>& kp,
@@ -77,7 +77,7 @@ motor_setzero(ids: list[int]) -> bool
 
 ### MIT 제어
 ```python
-operation_control(groups: list[dict]) -> None
+operation_control(groups: list[dict]) -> bool
 ```
 - 예시: [{"id":1,"pos":0.0,"vel":0.0,"kp":0.0,"kd":0.1,"tau":0.0}, ...]
 
