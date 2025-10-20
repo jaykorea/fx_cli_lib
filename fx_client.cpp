@@ -129,26 +129,26 @@ struct LatestBufferRT {
     }
 
     // ───────────── pop_latest ─────────────
-bool pop_latest(std::string& out, int timeout_ms) noexcept {
-    using clock = std::chrono::steady_clock;
-    const auto deadline = clock::now() + std::chrono::milliseconds(timeout_ms);
-    std::unique_lock<std::mutex> lk(cv_mtx);
+    bool pop_latest(std::string& out, int timeout_ms) noexcept {
+        using clock = std::chrono::steady_clock;
+        const auto deadline = clock::now() + std::chrono::milliseconds(timeout_ms);
+        std::unique_lock<std::mutex> lk(cv_mtx);
 
-    if (wseq != rseq) {
+        if (wseq != rseq) {
+            out = latest;
+            rseq = wseq;
+            return true;
+        }
+
+        if (!cv.wait_until(lk, deadline, [&]{ return wseq != rseq; })) {
+            ::sched_yield(); // 타임아웃 후 양보 시도
+            return false;
+        }
+
         out = latest;
         rseq = wseq;
         return true;
     }
-
-    if (!cv.wait_until(lk, deadline, [&]{ return wseq != rseq; })) {
-        ::sched_yield(); // 타임아웃 후 양보 시도
-        return false;
-    }
-
-    out = latest;
-    rseq = wseq;
-    return true;
-}
 
     // ───────────── clear ─────────────
     inline void clear() noexcept {

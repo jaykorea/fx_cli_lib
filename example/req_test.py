@@ -33,10 +33,14 @@ try:
     dt = 0.02
     steps = int(T / dt)
 
+    TIMEOUT = 3
+
+    a=1
+
     # Get Obs
     for i in range(steps):
         # 연산 시작 시간 기록 (단위: 초)
-        t0 = time.perf_counter()
+        t0 = time.monotonic()
 
         # 실제 작업 수행
         bool_state = cli.operation_control(mit_groups)
@@ -45,14 +49,15 @@ try:
         print(f"Step {i}: {state}")
 
         # 연산 종료 시간 기록 (단위: 초)
-        t1 = time.perf_counter()
+        t1 = time.monotonic()
 
         # 경과 시간을 초(second)에서 밀리초(millisecond)로 변환
         step_ms = (t1 - t0) * 1000
 
+
         # 10ms를 초과했는지 확인하고, 초과 시 RuntimeError 발생
-        if step_ms > 7:
-            raise RuntimeError(f"오류: Step {i}번이 너무 오래 걸렸습니다. 소요 시간: {step_ms:.3f} ms (제한: 7 ms)")
+        if step_ms > TIMEOUT:
+            raise RuntimeError(f"오류: Step {i}번이 너무 오래 걸렸습니다. 소요 시간: {step_ms:.3f} ms (제한: {TIMEOUT} ms)")
 
         print(f"Step {i} 소요 시간: {step_ms:.3f} ms")
 
