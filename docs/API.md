@@ -77,7 +77,7 @@ motor_setzero(ids: list[int]) -> bool
 
 ### MIT 제어
 ```python
-operation_control(groups: list[dict]) -> None
+operation_control(groups: list[dict]) -> bool
 ```
 - 예시: [{"id":1,"pos":0.0,"vel":0.0,"kp":0.0,"kd":0.1,"tau":0.0}, ...]
 
