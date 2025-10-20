@@ -286,7 +286,7 @@ public:
     }
 
     ~UdpSocket() {
-        run_rx_.store(false);
+        run_rx_.store(false, std::memory_order_release);
         if (sock_ >= 0) {
             ::shutdown(sock_, SHUT_RDWR);
             ::close(sock_);
@@ -493,6 +493,10 @@ private:
                     if (err == EBADF || err == ENOTCONN || err == ENETDOWN ||
                         err == ECONNRESET || err == ECONNREFUSED || err == EPIPE) {
 
+                        if (!run_rx_.load(std::memory_order_relaxed)) {
+                            std::cerr << "[FxCli::UdpSocket] Socket error during shutdown (errno=" << err << "), exiting...\n";
+                            break;
+                        }
                         std::cerr << "[FxCli::UdpSocket] Detected bad socket (errno=" << err
                                   << "), attempting recreate...\n";
 
@@ -562,14 +566,11 @@ void FxCli::send_cmd(const std::string &cmd) {
         throw std::runtime_error("socket not initialized");
 
     try {
-        // ✅ 내부 UDP 송신 (스냅샷 fd 사용)
         socket_->send(cmd.c_str(), cmd.size());
     }
     catch (const std::exception &e) {
-        // 소켓 에러 시 디버그용 경고 출력
         std::cerr << "[FxCli::send_cmd] send() failed: " << e.what() << std::endl;
 
-        // 소켓이 깨졌을 수 있으므로 재생성 시도
         try {
             std::cerr << "[FxCli::send_cmd] Attempting socket recreate...\n";
             socket_->create_socket_or_throw();
