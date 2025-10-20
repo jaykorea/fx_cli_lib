@@ -472,7 +472,7 @@ private:
 
         const auto RX_BUDGET = std::chrono::milliseconds(1);
 
-        while (run_rx_.load(std::memory_order_relaxed)) {
+        while (run_rx_.load(std::memory_order_acquire)) {
             // 1) poll로 이벤트 감시 (1ms 정도; 필요시 남은 전체 예산으로 조정)
             int r = ::poll(&pfd, 1, /*timeout_ms=*/1);
             if (r <= 0) continue;
@@ -493,7 +493,7 @@ private:
                     if (err == EBADF || err == ENOTCONN || err == ENETDOWN ||
                         err == ECONNRESET || err == ECONNREFUSED || err == EPIPE) {
 
-                        if (!run_rx_.load(std::memory_order_relaxed)) {
+                        if (!run_rx_.load(std::memory_order_acquire)) {
                             std::cerr << "[FxCli::UdpSocket] Socket error during shutdown (errno=" << err << "), exiting...\n";
                             break;
                         }
