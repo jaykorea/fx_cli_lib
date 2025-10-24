@@ -173,6 +173,7 @@ status() -> dict
   "M3": {"pattern": 2, "err": "None"},
   "M4": {"pattern": 2, "err": "None"},
   "IMU": {"pattern": 2, "err": "None"}
+  "EMERGENCY": {"value": "ON"},
 }
 ```
 
@@ -216,6 +217,10 @@ status() -> dict
 | `pattern` | `int` | code | 0=정지/대기, 1=보정, 2=작동 |
 | `err` | `str` | - | 모터 오류 상태 |
 
+##### 'EMERGENCY' 내부 구조
+| 키   | 타입   | 단위  | 설명      |
+|------|--------|-------|-----------|
+| `value` | `str` | - | ON=비상정지 Pushed, OFF=비상정지 Released |
 ---
 
 ### 기타
