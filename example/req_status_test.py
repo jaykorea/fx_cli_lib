@@ -16,10 +16,10 @@ ids_specific = [1, 3, 2, 4]
 
 try:
     # START (ACK: OK <START ...>)
-    # if not cli.motor_start(ids_specific):
-    #     print("Motor start failed")
-    # else:
-    #     print("Motor start succeeded")
+    if not cli.motor_start(ids_specific):
+        print("Motor start failed")
+    else:
+        print("Motor start succeeded")
 
     # Operation Control
     mit_groups = [
