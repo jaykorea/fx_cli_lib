@@ -698,7 +698,7 @@ std::string FxCli::req_simul() {
         "M4:p:-0.000191,v:0.129091,t:-0.008240;"
         "M6:p:0.000191,v:0.002136,t:0.000916;"
         "M8:p:0.000191,v:-0.037384,t:0.018127;"
-        "IMU:r:N,p:N,y:N,gx:N,gy:N,gz:N,pgx:N,pgy:N,pgz:N;"
+        "IMU:r:1.0,p:2.0,y:3.0,gx:4.0,gy:5.0,gz:6.0,pgx:7.0,pgy:8.0,pgz:9.0;"
         "SEQ_NUM: cnt:179;";
     return out;
 }
@@ -720,6 +720,7 @@ std::string FxCli::status_simul() {
         "IMU:N/A;";
     return out;
 }
+// Temp
 
 void FxCli::flush() {
     if (!socket_) return;
