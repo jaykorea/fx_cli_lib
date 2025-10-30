@@ -685,6 +685,42 @@ std::string FxCli::status() {
     return ok ? out : std::string();
 }
 
+
+// Temp
+std::string FxCli::req_simul() {
+    std::string out =
+        "OK <REQ>;"
+        "M1:p:-0.000191,v:0.042419,t:0.008240;"
+        "M3:p:0.000191,v:0.027161,t:0.024719;"
+        "M5:p:0.000191,v:0.010681,t:0.006409;"
+        "M7:p:-0.000572,v:0.020599,t:-0.015930;"
+        "M2:p:-0.000572,v:-0.022278,t:-0.041199;"
+        "M4:p:-0.000191,v:0.129091,t:-0.008240;"
+        "M6:p:0.000191,v:0.002136,t:0.000916;"
+        "M8:p:0.000191,v:-0.037384,t:0.018127;"
+        "IMU:r:N,p:N,y:N,gx:N,gy:N,gz:N,pgx:N,pgy:N,pgz:N;"
+        "SEQ_NUM: cnt:179;";
+    return out;
+}
+
+std::string FxCli::status_simul() {
+    std::string out =
+        "OK <STATUS>;"
+        " MCU:robot:4w4l_front,fw:v3.1.0,proto:ATv1,uptime:1640;"
+        "NET: status:up, ip:192.168.10.10, gw:192.168.10.1, mask:255.255.255.0;"
+        "M1:pattern:2,err:None;"
+        "M3:pattern:2,err:None;"
+        "M5:pattern:2,err:None;"
+        "M7:pattern:2,err:None;"
+        "M2:pattern:2,err:None;"
+        "M4:pattern:2,err:None;"
+        "M6:pattern:2,err:None;"
+        "M8:pattern:2,err:None;"
+        "EMERGENCY:OFF;"
+        "IMU:N/A;";
+    return out;
+}
+
 void FxCli::flush() {
     if (!socket_) return;
     socket_->flush_queue();

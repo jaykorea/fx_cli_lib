@@ -12,7 +12,7 @@ the text-based AT command protocol via the `fx_cli` module.
 cli = fx_cli.FxCli()
 
 # 1) 특정 ID 제어 예시
-ids_specific = [1, 3, 2, 4]
+ids_specific = [1, 3, 2, 4, 5, 6, 7, 8]
 
 try:
     # START (ACK: OK <START ...>)

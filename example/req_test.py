@@ -9,10 +9,10 @@ the text-based AT command protocol via the `fx_cli` module.
 """
 
 # Create a client; you can override the defaults by passing ip/port (port is int).
-cli = fx_cli.FxCli()
+cli = fx_cli.FxCli("192.168.10.10", 5101)
 
 # 1) 특정 ID 제어 예시
-ids_specific = [1, 2, 3, 4]
+ids_specific = [1, 2, 3, 4, 5, 6, 7, 8]
 
 try:
     # START (ACK: OK <START ...>)
@@ -27,13 +27,17 @@ try:
         {"id": ids_specific[1], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.01, "tau": 0.0},
         {"id": ids_specific[2], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.01, "tau": 0.0},
         {"id": ids_specific[3], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.01, "tau": 0.0},
+        {"id": ids_specific[4], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.01, "tau": 0.0},
+        {"id": ids_specific[5], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.01, "tau": 0.0},
+        {"id": ids_specific[6], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.01, "tau": 0.0},
+        {"id": ids_specific[7], "pos": 0.0, "vel": 0.0, "kp": 0.0, "kd": 0.01, "tau": 0.0},
     ]
 
     T = 3600
     dt = 0.02
     steps = int(T / dt)
 
-    TIMEOUT = 3
+    TIMEOUT = 10
 
     a=1
 

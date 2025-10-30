@@ -112,6 +112,10 @@ public:
   /// @brief Request status report ("AT+STATUS")
   std::string status();
 
+  //Temp
+  std::string req_simul();
+  std::string status_simul();
+
   /// @brief Immediately discard all received packets. 
   /// [CHANGED] Clears *all per-tag* buffers (MIT/REQ/STATUS/...).
   void flush();
