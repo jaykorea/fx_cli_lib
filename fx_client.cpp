@@ -706,7 +706,7 @@ std::string FxCli::req_simul() {
 std::string FxCli::status_simul() {
     std::string out =
         "OK <STATUS>;"
-        " MCU:robot:4w4l_front,fw:v3.1.0,proto:ATv1,uptime:1640;"
+        "MCU:robot:4w4l_front,fw:v3.1.0,proto:ATv1,uptime:1640;"
         "NET: status:up, ip:192.168.10.10, gw:192.168.10.1, mask:255.255.255.0;"
         "M1:pattern:2,err:None;"
         "M3:pattern:2,err:None;"
